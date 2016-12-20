@@ -1,0 +1,10 @@
+[package]
+name = "lazuli"
+version = "0.1.0"
+authors = ["Caleb Jones <code@calebjones.net>"]
+
+[dependencies]
+
+[dependencies.sexp2]
+version = "^0.1.0"
+path = "../sexp2"
