@@ -1,11 +1,21 @@
-(struct point
-  (x f64)
-  (y f64))
+(struct point x y)
 
-(defn (point/length (pt point))
-  (let (x (point/x point)
-        y (point/y point))
-     (+ (* x x) (* y y))))
+(defn (point/length pt)
+  (let! x (point/x pt))
+  (let! y (point/y pt))
+  (return (+ (* x x) (* y y))))
+
+(defn (fib n)
+  (let! a 0)
+  (let! b 1)
+  (loop
+    (if (<= n 0)
+      (return a)
+      ())
+    (let! c a)
+    (set! a b)
+    (set! b (+ c b))
+    (set! n (- n 1))))
 
 (let! x 2.0)
 (let! y 3.0)
