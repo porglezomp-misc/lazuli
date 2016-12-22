@@ -1,6 +1,6 @@
 use sexp2;
 use std::io;
-use super::AstError;
+use ast::AstError;
 
 
 #[derive(Debug)]
