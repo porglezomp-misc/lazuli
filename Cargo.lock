@@ -2,7 +2,7 @@
 name = "lazuli"
 version = "0.1.0"
 dependencies = [
- "sexp2 0.1.0",
+ "sexp2 0.2.0",
 ]
 
 [[package]]
@@ -12,7 +12,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "sexp2"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nom 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

@@ -1,16 +1,32 @@
 extern crate sexp2;
 
-use std::io::{self, Read, Write};
-
 mod error;
+
+use std::io::{self, Read, Write};
 use error::Error;
+use sexp2::Sexp;
+
+#[derive(Debug)]
+pub enum AstError {
+    Unimplemented
+}
+
+#[derive(Debug)]
+pub enum Ast {
+}
+
+fn make_ast(_sexp: Vec<Sexp>) -> Result<Vec<Ast>, AstError> {
+    Err(AstError::Unimplemented)
+}
 
 fn run() -> Result<(), Error> {
     let mut buf = String::new();
     io::stdin().read_to_string(&mut buf)?;
 
-    let expr = sexp2::parse(&buf)?;
-    println!("{:#?}", expr);
+    let sexpressions = sexp2::parse(&buf)?;
+    let ast = make_ast(sexpressions)?;
+
+    println!("{:#?}", ast);
 
     Ok(())
 }

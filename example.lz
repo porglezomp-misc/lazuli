@@ -1,0 +1,14 @@
+(struct point
+  (x f64)
+  (y f64))
+
+(defn (point/length (pt point))
+  (let (x (point/x point)
+        y (point/y point))
+     (+ (* x x) (* y y))))
+
+(let! x 2.0)
+(let! y 3.0)
+(let! a-point (point x y))
+(set! x (point/length a-point))
+(print x)
