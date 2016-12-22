@@ -11,20 +11,20 @@ pub enum Error {
 }
 
 
-impl From<io::Error> for Error {
+impl<'a> From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
         Error::Io(err)
     }
 }
 
-impl From<sexp2::ParseError> for Error {
+impl<'a> From<sexp2::ParseError> for Error {
     fn from(err: sexp2::ParseError) -> Self {
         Error::Parse(err)
     }
 }
 
-impl From<AstError> for Error {
-    fn from(err: AstError) -> Self {
+impl<'a> From<AstError> for Error {
+    fn from(err: AstError) -> Error {
         Error::Ast(err)
     }
 }
