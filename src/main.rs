@@ -6,14 +6,25 @@ mod error;
 use std::io::{self, Read, Write};
 use error::Error;
 
-fn run<'a>() -> Result<(), Error> {
+fn run() -> Result<(), Error> {
     let mut buf = String::new();
     io::stdin().read_to_string(&mut buf)?;
 
-    let sexpressions = sexp2::parse(&buf)?;
+    let (sexpressions, err) = sexp2::parse(&buf);
+    if let Some(err) = err {
+        return Err(err.into());
+    }
+
     let ast = sexpressions.iter()
         .map(ast::make_ast)
         .collect::<Result<Vec<_>, _>>()?;
+
+    // let mut env = ast::Env::new();
+    // let mut new_ast = Vec::with_capacity(ast.len());
+    // for node in &ast {
+    //     let new_node = ast::resolve_names(&env, node)?;
+    //     new_ast.push(new_node);
+    // }
 
     for item in ast {
         println!("{:#?}", item);
