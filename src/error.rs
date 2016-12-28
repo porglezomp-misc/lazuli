@@ -7,8 +7,7 @@ use ast::AstError;
 pub enum Error {
     Io(io::Error),
     Parse(sexp2::ParseError),
-    Ast,
-    // Ast(AstError<'a>),
+    Ast(AstError<'static>),
 }
 
 
@@ -26,6 +25,6 @@ impl From<sexp2::ParseError> for Error {
 
 impl<'a> From<AstError<'a>> for Error {
     fn from(err: AstError) -> Error {
-        Error::Ast
+        Error::Ast(err.to_owned())
     }
 }

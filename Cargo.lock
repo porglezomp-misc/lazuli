@@ -2,10 +2,10 @@
 name = "lazuli"
 version = "0.1.0"
 dependencies = [
- "sexp2 0.3.0",
+ "sexp2 0.3.1",
 ]
 
 [[package]]
 name = "sexp2"
-version = "0.3.0"
+version = "0.3.1"
 

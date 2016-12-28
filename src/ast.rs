@@ -1,5 +1,6 @@
 use sexp2::Sexp;
 
+use std::borrow::{Cow, ToOwned};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -13,7 +14,29 @@ pub enum AstError<'a> {
     InvalidInCall(Sexp<'a>),
     StructName(Sexp<'a>),
     StructMember(Sexp<'a>),
-    NameLookup(String),
+    NameLookup(Cow<'a, str>),
+}
+
+fn extend_cow<'a, T: ?Sized>(cow: &Cow<'a, T>) -> Cow<'static, T>
+    where T: ToOwned
+{
+    Cow::Owned(cow.clone().into_owned())
+}
+
+impl<'a> AstError<'a> {
+    pub fn to_owned(&self) -> AstError<'static> {
+        use self::AstError::*;
+        match *self {
+            ArgList(ref s) => ArgList(s.to_owned()),
+            ArgListNoName => ArgListNoName,
+            ArgListName(ref s) => ArgListName(s.to_owned()),
+            ArgListArg(ref s) => ArgListArg(s.to_owned()),
+            InvalidInCall(ref s) => InvalidInCall(s.to_owned()),
+            StructName(ref s) => StructName(s.to_owned()),
+            StructMember(ref s) => StructMember(s.to_owned()),
+            NameLookup(ref s) => NameLookup(extend_cow(s)),
+        }
+    }
 }
 
 type NameId = u64;
@@ -61,12 +84,13 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub fn lookup(&self, name: &str) -> Result<NameId, AstError> {
+    pub fn lookup<'b>(&self, name: &'b str) -> Result<NameId, AstError<'b>> {
         Err(AstError::NameLookup(name.into()))
     }
 }
 
-fn defn_get_args<'a>(arg_list: &'a Sexp<'a>) -> Result<(&'a str, Vec<&'a str>), AstError<'a>> {
+fn defn_get_args<'a>(arg_list: &'a Sexp<'a>)
+-> Result<(&'a str, Vec<&'a str>), AstError<'a>> {
     match *arg_list {
         Sexp::List(ref xs, ..) => {
             let name = match xs.first() {

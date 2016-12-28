@@ -6,5 +6,5 @@ authors = ["Caleb Jones <code@calebjones.net>"]
 [dependencies]
 
 [dependencies.sexp2]
-version = "^0.3.0"
+version = "^0.3.1"
 path = "../sexp2"
