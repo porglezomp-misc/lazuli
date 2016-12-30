@@ -1,4 +1,4 @@
-use sexp2::Sexp;
+use ess::Sexp;
 
 use std::borrow::{Cow, ToOwned};
 use std::collections::HashMap;

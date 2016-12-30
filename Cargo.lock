@@ -2,10 +2,13 @@
 name = "lazuli"
 version = "0.1.0"
 dependencies = [
- "sexp2 0.3.1",
+ "ess 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
-name = "sexp2"
+name = "ess"
 version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
+[metadata]
+"checksum ess 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f266926a8bbfe61027c0c3a8431ca5fa33b5d1e316ad427a2ea2abe77034bded"

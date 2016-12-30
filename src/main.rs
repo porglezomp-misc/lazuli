@@ -1,4 +1,4 @@
-extern crate sexp2;
+extern crate ess;
 
 mod ast;
 mod error;
@@ -10,7 +10,7 @@ fn run() -> Result<(), Error> {
     let mut buf = String::new();
     io::stdin().read_to_string(&mut buf)?;
 
-    let (sexpressions, err) = sexp2::parse(&buf);
+    let (sexpressions, err) = ess::parse(&buf);
     if let Some(err) = err {
         return Err(err.into());
     }

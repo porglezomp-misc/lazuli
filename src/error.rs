@@ -1,4 +1,4 @@
-use sexp2;
+use ess;
 use std::io;
 use ast::AstError;
 
@@ -6,7 +6,7 @@ use ast::AstError;
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
-    Parse(sexp2::ParseError),
+    Parse(ess::ParseError),
     Ast(AstError<'static>),
 }
 
@@ -17,8 +17,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<sexp2::ParseError> for Error {
-    fn from(err: sexp2::ParseError) -> Self {
+impl From<ess::ParseError> for Error {
+    fn from(err: ess::ParseError) -> Self {
         Error::Parse(err)
     }
 }
