@@ -1,4 +1,4 @@
-use ess;
+use ess::parser::ParseError;
 use std::io;
 use ast::AstError;
 
@@ -6,7 +6,7 @@ use ast::AstError;
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
-    Parse(ess::ParseError),
+    Parse(ParseError),
     Ast(AstError<'static>),
 }
 
@@ -17,8 +17,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<ess::ParseError> for Error {
-    fn from(err: ess::ParseError) -> Self {
+impl From<ParseError> for Error {
+    fn from(err: ParseError) -> Self {
         Error::Parse(err)
     }
 }
