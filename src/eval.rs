@@ -51,7 +51,7 @@ pub enum Val<'a> {
     Str(Cow<'a, str>),
     Sym(Cow<'a, str>),
     Tuple(Vec<Rc<Val<'a>>>),
-    Fn(Vec<&'a str>, Ast<'a>),
+    Fn(Vec<Cow<'a, str>>, Ast<'a>),
     Prim(Prim),
     // TODO: Move these up a layer into a higher type so that they can't be confused with values
     Break(Rc<Val<'a>>),
@@ -147,16 +147,16 @@ pub fn eval<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(Rc<Val<'a>>, Rc<Env<
             env.lookup(name.borrow()).map(|x| (x.0.clone(), env.clone()))
                 .ok_or_else(|| EvalError::NameLookup(name.clone().into_owned()))
         }
-        Ast::Struct(name, ref members) => {
-            let constructor = Ast::Call(Box::new(Ast::Var("tuple".into())), members.iter().map(|&member| {
-                Ast::Var(member.into())
+        Ast::Struct(ref name, ref members) => {
+            let constructor = Ast::Call(Box::new(Ast::Var("tuple".into())), members.iter().map(|member| {
+                Ast::Var(member.clone())
             }).collect());
             let constructor = Rc::new(Val::Fn(members.clone(), constructor));
-            let accessors = members.iter().enumerate().map(|(i, &member)| {
-                Rc::new(Val::Fn(vec![member],
+            let accessors = members.iter().enumerate().map(|(i, member)| {
+                Rc::new(Val::Fn(vec![member.clone()],
                                 Ast::Call(Box::new(Ast::Var("tuple/nth".into())), vec![
                                     Ast::Int(i as i64),
-                                    Ast::Var(member.into()),
+                                    Ast::Var(member.clone()),
                                 ])))
             });
             let mut env = (*env).clone();
@@ -180,9 +180,9 @@ pub fn eval<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(Rc<Val<'a>>, Rc<Env<
                         return Err(EvalError::BadArity{ got: args.len(), expected: names.len() });
                     }
                     let mut call_env = Env::with_parent(env.clone());
-                    for (&name, arg) in names.iter().zip(args) {
+                    for (name, arg) in names.iter().zip(args) {
                         let (arg_val, _) = eval(arg, env.clone())?;
-                        call_env.insert(name.into(), Var(arg_val));
+                        call_env.insert(name.clone().into_owned(), Var(arg_val));
                     }
                     Ok((eval(body, Rc::new(call_env))?.0, env))
                 }

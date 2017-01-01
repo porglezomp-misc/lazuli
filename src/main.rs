@@ -15,14 +15,15 @@ fn run() -> Result<(), Error> {
     let mut buf = String::new();
     io::stdin().read_to_string(&mut buf)?;
 
-    let (sexpressions, err) = ess::parse(&buf);
+    let (exprs, err) = ess::parse(&buf);
     if let Some(err) = err {
         return Err(err.into());
     }
 
-    let ast = sexpressions.iter()
-        .map(ast::make_ast)
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut ast = Vec::new();
+    for item in &exprs {
+        ast.push(ast::make_ast(item)?.to_owned());
+    }
 
     let (prelude, err) = ess::parse(include_str!("prelude.laz"));
     if let Some(err) = err {
@@ -32,9 +33,10 @@ fn run() -> Result<(), Error> {
         return Err(err.into());
     }
 
-    let prelude_ast = prelude.iter()
-        .map(ast::make_ast)
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut prelude_ast = Vec::new();
+    for item in &prelude {
+        prelude_ast.push(ast::make_ast(item)?.to_owned());
+    }
 
     let mut env = Rc::new(env::Env::with_primitives());
     for item in &prelude_ast {
