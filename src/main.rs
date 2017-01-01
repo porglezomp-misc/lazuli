@@ -39,8 +39,7 @@ fn repl() -> Result<(), Error> {
 
     let mut env = Rc::new(env::Env::with_primitives());
     for item in &prelude_ast {
-        let (_, new_env) = eval::eval(item, env)?;
-        env = new_env;
+        eval::eval(item, &mut env)?;
     }
 
     let mut buffer = String::new();
@@ -73,15 +72,14 @@ fn repl() -> Result<(), Error> {
 
         for expr in exprs {
             let ast = ast::make_ast(&expr)?.to_owned();
-            let (val, new_env) = match eval::eval(&ast, env.clone()) {
-                Ok((val, new_env)) => (val, new_env),
+            let val = match eval::eval(&ast, &mut env) {
+                Ok(val) => val,
                 Err(e) => {
                     println!("Eval Error: {:?}", e);
                     break;
                 }
             };
             println!("{}", val);
-            env = new_env;
         }
     }
 }
@@ -117,13 +115,11 @@ fn run(mut args: Args) -> Result<(), Error> {
 
         let mut env = Rc::new(env::Env::with_primitives());
         for item in &prelude_ast {
-            let (_, new_env) = eval::eval(item, env)?;
-            env = new_env;
+            eval::eval(item, &mut env)?;
         }
 
         for item in &ast {
-            let (_, new_env) = eval::eval(item, env)?;
-            env = new_env;
+            eval::eval(item, &mut env)?;
         }
 
         Ok(())
