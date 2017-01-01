@@ -9,7 +9,7 @@
 (defn (list/map f xs)
   (if xs
     (cons (f (car xs))
-          (map f (cdr xs)))))
+          (list/map f (cdr xs)))))
 
 (defn (list/filter p xs)
   (if xs
@@ -21,8 +21,7 @@
 (defn (list/foldl f x xs)
   (if (nil? xs)
       x
-      (foldl (f x (car xs))
-             (cdr xs))))
+      (list/foldl f (f x (car xs)) (cdr xs))))
 
 (defn (list/length xs)
   (if (nil? xs)
