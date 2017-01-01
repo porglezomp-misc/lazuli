@@ -22,4 +22,14 @@ impl<'a> Env<'a> {
             names: HashMap::new(),
         }
     }
+
+    pub fn lookup(&self, name: &str) -> Option<&Var> {
+        self.names.get(name).or_else(|| {
+            self.parent.and_then(|parent| parent.lookup(name))
+        })
+    }
+
+    pub fn insert(&'a mut self, name: &'a str, var: Var) {
+        self.names.insert(name, var);
+    }
 }
