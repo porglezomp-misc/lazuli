@@ -149,6 +149,16 @@ fn nil<'a>() -> ControlFlow<'a> {
     value(Val::Nil)
 }
 
+macro_rules! try_get_value {
+    ($val:expr, $env:expr) => {
+        if let ControlFlow::Value(val) = $val {
+            val
+        } else {
+            return Ok(($val, $env));
+        }
+    }
+}
+
 pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>, Rc<Env<'a>>), EvalError> {
     match *ast {
         Ast::Nil => {
@@ -195,41 +205,32 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
         }
         Ast::Call(ref func, ref args) => {
             let (func, _) = eval_core(func, env.clone())?;
-            if let ControlFlow::Value(func) = func {
-                match *func {
-                    Val::Fn(ref names, ref body) => {
-                        if args.len() != names.len() {
-                            return Err(EvalError::BadArity{ got: args.len(), expected: names.len() });
-                        }
-                        let mut call_env = Env::with_parent(env.clone());
-                        for (name, arg) in names.iter().zip(args) {
-                            let (arg_val, _) = eval_core(arg, env.clone())?;
-                            if let ControlFlow::Value(arg_val) = arg_val {
-                                call_env.insert(name.clone().into_owned(), Var(arg_val));
-                            } else {
-                                return Ok((arg_val, env));
-                            }
-                        }
-                        Ok((ControlFlow::Value(eval(body, &mut Rc::new(call_env))?), env))
+            let func = try_get_value!(func, env);
+            match *func {
+                Val::Fn(ref names, ref body) => {
+                    if args.len() != names.len() {
+                        return Err(EvalError::BadArity{ got: args.len(), expected: names.len() });
                     }
-                    Val::Prim(ref prim) => {
-                        let mut arg_values = Vec::new();
-                        for arg in args {
-                            let (arg_val, _) = eval_core(arg, env.clone())?;
-                            if let ControlFlow::Value(arg_val) = arg_val {
-                                arg_values.push(arg_val);
-                            } else {
-                                return Ok((arg_val, env));
-                            }
-                        }
-                        Ok((ControlFlow::Value(prim.call(&arg_values)?), env))
+                    let mut call_env = Env::with_parent(env.clone());
+                    for (name, arg) in names.iter().zip(args) {
+                        let (arg_val, _) = eval_core(arg, env.clone())?;
+                        let arg_val = try_get_value!(arg_val, env);
+                        call_env.insert(name.clone().into_owned(), Var(arg_val));
                     }
-                    _ => {
-                        Err(EvalError::InvalidFunction(format!("{:#?}", func)))
-                    }
+                    Ok((ControlFlow::Value(eval(body, &mut Rc::new(call_env))?), env))
                 }
-            } else {
-                Ok((func, env))
+                Val::Prim(ref prim) => {
+                    let mut arg_values = Vec::new();
+                    for arg in args {
+                        let (arg_val, _) = eval_core(arg, env.clone())?;
+                        let arg_val = try_get_value!(arg_val, env);
+                        arg_values.push(arg_val);
+                    }
+                    Ok((ControlFlow::Value(prim.call(&arg_values)?), env))
+                }
+                _ => {
+                    Err(EvalError::InvalidFunction(format!("{:#?}", func)))
+                }
             }
         }
         Ast::Let(ref var, ref val) => {
@@ -238,24 +239,17 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 ref other => return Err(EvalError::InvalidName(format!("{:#?}", other))),
             };
             let (val, _) = eval_core(val, env.clone())?;
-            if let ControlFlow::Value(val) = val {
-                let mut env = (*env).clone();
-                env.insert(name, Var(val));
-                Ok((nil(), Rc::new(env)))
-            } else {
-                Ok((val, env))
-            }
+            let val = try_get_value!(val, env);
+            let mut env = (*env).clone();
+            env.insert(name, Var(val));
+            Ok((nil(), Rc::new(env)))
         }
         Ast::If(ref cond, ref if_true, ref if_false) => {
             let (cond, _) = eval_core(cond, env.clone())?;
-            if let ControlFlow::Value(cond) = cond {
-                if let Val::Nil = *cond {
-                    Ok((eval_core(if_false, env.clone())?.0, env))
-                } else {
-                    Ok((eval_core(if_true, env.clone())?.0, env))
-                }
-            } else {
-                Ok((cond, env))
+            let cond = try_get_value!(cond, env);
+            match *cond {
+                Val::Nil => Ok((eval_core(if_false, env.clone())?.0, env)),
+                _ => Ok((eval_core(if_true, env.clone())?.0, env)),
             }
         }
         Ast::Break(None) => {
@@ -263,11 +257,8 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
         }
         Ast::Break(Some(ref val)) => {
             let (val, _) = eval_core(&val, env.clone())?;
-            if let ControlFlow::Value(val) = val {
-                Ok((ControlFlow::Break(val), env))
-            } else {
-                Ok((val, env))
-            }
+            let val = try_get_value!(val, env);
+            Ok((ControlFlow::Break(val), env))
         }
         Ast::Continue => {
             Ok((ControlFlow::Continue, env))
@@ -277,11 +268,8 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
         }
         Ast::Return(Some(ref val)) => {
             let (val, _) = eval_core(&val, env.clone())?;
-            if let ControlFlow::Value(val) = val {
-                Ok((ControlFlow::Return(val), env))
-            } else {
-                Ok((val, env))
-            }
+            let val = try_get_value!(val, env);
+            Ok((ControlFlow::Return(val), env))
         }
         Ast::Loop(ref body) => {
             loop {
