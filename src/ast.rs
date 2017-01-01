@@ -70,10 +70,9 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
             Some(x) => match *x {
                 Sexp::Sym(ref s, ..) if s == "if" => {
                     // TODO: Not too many args
-                    // TODO: Optional second arg?
                     let cond = make_ast(&xs[1])?;
                     let if_true = make_ast(&xs[2])?;
-                    let if_false = make_ast(&xs[3])?;
+                    let if_false = xs.get(3).map(make_ast).unwrap_or(Ok(Ast::Nil))?;
                     Ok(Ast::If(Box::new(cond), Box::new(if_true), Box::new(if_false)))
                 }
                 Sexp::Sym(ref s, ..) if s == "let!" => {
