@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use eval::Var;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Env<'a> {
-    parent: Option<&'a Env<'a>>,
-    names: HashMap<&'a str, Var>,
+    parent: Option<Rc<Env<'a>>>,
+    names: HashMap<String, Var<'a>>,
 }
 
 impl<'a> Env<'a> {
@@ -16,20 +17,28 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub fn with_parent<'b>(parent: &'a Env<'b>) -> Env<'a> {
+    pub fn with_parent(parent: Rc<Env<'a>>) -> Env<'a> {
         Env {
             parent: Some(parent),
             names: HashMap::new(),
         }
     }
 
-    pub fn lookup(&self, name: &str) -> Option<&Var> {
-        self.names.get(name).or_else(|| {
-            self.parent.and_then(|parent| parent.lookup(name))
-        })
+    pub fn lookup(&self, name: &str) -> Option<&Var<'a>> {
+        match self.names.get(name) {
+            None => {
+                match self.parent {
+                    Some(ref parent) => {
+                        parent.lookup(name)
+                    }
+                    None => None
+                }
+            }
+            some => some
+        }
     }
 
-    pub fn insert(&'a mut self, name: &'a str, var: Var) {
+    pub fn insert(&mut self, name: String, var: Var<'a>) {
         self.names.insert(name, var);
     }
 }

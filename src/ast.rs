@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ess::Sexp;
 
 #[derive(Debug)]
@@ -36,10 +38,12 @@ pub enum Ast<'a> {
     Return(Option<Box<Ast<'a>>>),
     Break(Option<Box<Ast<'a>>>),
     Continue,
-    Defn(&'a str, Vec<&'a str>, Vec<Ast<'a>>),
+    Defn(Cow<'a, str>, Vec<&'a str>, Vec<Ast<'a>>),
     Struct(&'a str, Vec<&'a str>),
-    Var(&'a str),
+    Var(Cow<'a, str>),
     Literal(&'a Sexp<'a>),
+    Int(i64),
+    Float(f64),
     Nil,
 }
 
@@ -118,7 +122,7 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
                     let body = xs[2..].iter()
                         .map(make_ast)
                         .collect::<Result<_, _>>()?;
-                    Ok(Ast::Defn(name, args, body))
+                    Ok(Ast::Defn(name.into(), args, body))
                 }
                 Sexp::Sym(ref s, ..) if s == "struct" => {
                     let name = match xs[1] {
@@ -136,7 +140,7 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
                     Ok(Ast::Struct(name, members))
                 }
                 Sexp::Sym(ref s, ..) => {
-                    let func = Ast::Var(s);
+                    let func = Ast::Var(Cow::Borrowed(s));
                     let args = xs[1..].iter()
                         .map(make_ast)
                         .collect::<Result<_, _>>()?;
@@ -153,10 +157,10 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
             },
             None => Ok(Ast::Nil),
         },
-        Sexp::Sym(ref s, ..) => Ok(Ast::Var(s)),
+        Sexp::Sym(ref s, ..) => Ok(Ast::Var(s.clone())),
         ref s @ Sexp::Str(..) => Ok(Ast::Literal(s)),
         ref s @ Sexp::Char(..) => Ok(Ast::Literal(s)),
-        ref s @ Sexp::Int(..) => Ok(Ast::Literal(s)),
-        ref s @ Sexp::Float(..) => Ok(Ast::Literal(s)),
+        Sexp::Int(i, ..) => Ok(Ast::Int(i)),
+        Sexp::Float(f, ..) => Ok(Ast::Float(f)),
     }
 }

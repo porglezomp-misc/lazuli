@@ -6,6 +6,8 @@ mod env;
 mod eval;
 
 use std::io::{self, Read, Write};
+use std::rc::Rc;
+
 use error::Error;
 
 fn run() -> Result<(), Error> {
@@ -21,15 +23,11 @@ fn run() -> Result<(), Error> {
         .map(ast::make_ast)
         .collect::<Result<Vec<_>, _>>()?;
 
-    // let mut env = ast::Env::new();
-    // let mut new_ast = Vec::with_capacity(ast.len());
-    // for node in &ast {
-    //     let new_node = ast::resolve_names(&env, node)?;
-    //     new_ast.push(new_node);
-    // }
-
-    for item in ast {
-        println!("{:#?}", item);
+    let mut env = Rc::new(env::Env::new());
+    for item in &ast {
+        let (val, new_env) = eval::eval(item, env)?;
+        env = new_env;
+        println!("{:#?}", val);
     }
 
     Ok(())
