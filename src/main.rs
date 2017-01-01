@@ -4,6 +4,7 @@ mod ast;
 mod error;
 mod env;
 mod eval;
+mod prims;
 
 use std::io::{self, Read, Write};
 use std::rc::Rc;
@@ -23,7 +24,7 @@ fn run() -> Result<(), Error> {
         .map(ast::make_ast)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut env = Rc::new(env::Env::new());
+    let mut env = Rc::new(env::Env::with_primitives());
     for item in &ast {
         let (_, new_env) = eval::eval(item, env)?;
         env = new_env;

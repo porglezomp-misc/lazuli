@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use eval::Var;
+use eval::{Val, Var};
 
 #[derive(Debug, Clone)]
 pub struct Env<'a> {
@@ -10,10 +10,25 @@ pub struct Env<'a> {
 }
 
 impl<'a> Env<'a> {
-    pub fn new() -> Self {
+    pub fn with_primitives() -> Self {
+        use prims::Prim::*;
+        let mut names = HashMap::new();
+        names.insert("+".into(), Var(Rc::new(Val::Prim(Plus))));
+        names.insert("-".into(), Var(Rc::new(Val::Prim(Minus))));
+        names.insert("*".into(), Var(Rc::new(Val::Prim(Times))));
+        names.insert("/".into(), Var(Rc::new(Val::Prim(Divide))));
+        names.insert("==".into(), Var(Rc::new(Val::Prim(Equals))));
+        names.insert("!=".into(), Var(Rc::new(Val::Prim(NotEquals))));
+        names.insert("<=".into(), Var(Rc::new(Val::Prim(LessEquals))));
+        names.insert(">=".into(), Var(Rc::new(Val::Prim(GreaterEquals))));
+        names.insert("<".into(), Var(Rc::new(Val::Prim(Less))));
+        names.insert(">".into(), Var(Rc::new(Val::Prim(Greater))));
+        names.insert("print".into(), Var(Rc::new(Val::Prim(Print))));
+        names.insert("tuple".into(), Var(Rc::new(Val::Prim(MakeTuple))));
+        names.insert("tuple/nth".into(), Var(Rc::new(Val::Prim(IndexTuple))));
         Env {
             parent: None,
-            names: HashMap::new(),
+            names: names,
         }
     }
 
