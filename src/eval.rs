@@ -1,5 +1,6 @@
 use std::borrow::{Borrow, Cow};
 use std::rc::Rc;
+use std::fmt::{self, Display};
 
 use ess::Sexp;
 
@@ -56,6 +57,31 @@ pub enum Val<'a> {
     Break(Rc<Val<'a>>),
     Return(Rc<Val<'a>>),
     Continue,
+}
+
+impl<'a> Display for Val<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Val::Nil => write!(fmt, "()"),
+            Val::Int(i) => write!(fmt, "{}", i),
+            Val::Float(f) => write!(fmt, "{:.0}", f),
+            Val::Char(c) => write!(fmt, "#\\{}", c),
+            Val::Str(ref s) => write!(fmt, "{:?}", s),
+            Val::Sym(ref s) => write!(fmt, "{}", s),
+            Val::Tuple(ref t) => {
+                write!(fmt, "(tuple")?;
+                for elem in t {
+                    write!(fmt, " {}", elem)?;
+                }
+                write!(fmt, ")")
+            }
+            Val::Fn(..) => write!(fmt, "#fn<[anonymous]>"),
+            Val::Prim(p) => write!(fmt, "#fn<[{:?}]>", p),
+            Val::Break(ref val) => write!(fmt, "#break<{}>", val),
+            Val::Return(ref val) => write!(fmt, "#return<{}>", val),
+            Val::Continue => write!(fmt, "#continue"),
+        }
+    }
 }
 
 impl<'a> PartialEq for Val<'a> {

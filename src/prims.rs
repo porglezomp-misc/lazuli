@@ -182,9 +182,9 @@ fn call_greater<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
 fn call_print<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
     for (i, expr) in args.iter().enumerate() {
         if i == args.len() - 1 {
-            println!("{:?}", expr);
+            println!("{}", expr);
         } else {
-            print!("{:?} ", expr);
+            print!("{} ", expr);
         }
     }
     Ok(args.last().cloned().unwrap_or(Rc::new(Val::Nil)))
