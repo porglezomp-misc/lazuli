@@ -24,7 +24,24 @@ fn run() -> Result<(), Error> {
         .map(ast::make_ast)
         .collect::<Result<Vec<_>, _>>()?;
 
+    let (prelude, err) = ess::parse(include_str!("prelude.laz"));
+    if let Some(err) = err {
+        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        println!("!!! AN ERROR OCCURRED WHILE LOADING THE PRELUDE !!!");
+        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        return Err(err.into());
+    }
+
+    let prelude_ast = prelude.iter()
+        .map(ast::make_ast)
+        .collect::<Result<Vec<_>, _>>()?;
+
     let mut env = Rc::new(env::Env::with_primitives());
+    for item in &prelude_ast {
+        let (_, new_env) = eval::eval(item, env)?;
+        env = new_env;
+    }
+
     for item in &ast {
         let (_, new_env) = eval::eval(item, env)?;
         env = new_env;

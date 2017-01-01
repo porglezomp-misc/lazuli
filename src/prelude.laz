@@ -1,0 +1,32 @@
+(struct cons car cdr)
+(let! car cons/car)
+(let! cdr cons/cdr)
+
+(let! nil ())
+(defn (nil? xs)
+  (== xs nil))
+
+(defn (list/map f xs)
+  (if xs
+    (cons (f (car xs))
+          (map f (cdr xs)))))
+
+(defn (list/filter p xs)
+  (if xs
+      (if (p (car xs))
+          (cons (car xs)
+                (filter p (cdr xs)))
+          (cdr xs))))
+
+(defn (list/foldl f x xs)
+  (if (nil? xs)
+      x
+      (foldl (f x (car xs))
+             (cdr xs))))
+
+(defn (list/length xs)
+  (if (nil? xs)
+      0
+      (+ 1 (list/length (cdr xs)))))
+
+(let! not nil?)
