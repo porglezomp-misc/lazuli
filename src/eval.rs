@@ -359,20 +359,6 @@ pub fn eval<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(Rc<Val<'a>>, Rc<Env<
                         eval(expr, env.clone()).map(|x| x.0)
                     }).collect::<Result<_, _>>()?;
                     return Ok((eval_relations(s, &args)?, env));
-                } else if s == "null?" {
-                    if args.len() != 1 {
-                        return Err(EvalError::BadArity {
-                            expected: 1,
-                            got: args.len(),
-                        })
-                    }
-
-                    let (expr, _) = eval(&args[0], env.clone())?;
-                    if type_of_term(&expr) == Type::Nil {
-                        return Ok((Rc::new(Val::Sym("t".into())), env));
-                    } else {
-                        return Ok((Rc::new(Val::Nil), env));
-                    }
                 }
             }
 

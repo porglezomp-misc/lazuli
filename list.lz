@@ -1,0 +1,32 @@
+(struct cons
+  car
+  cdr)
+(let! car cons/car)
+(let! cdr cons/cdr)
+(let! nil ())
+
+(defn (nil? xs)
+  (== xs nil))
+(let! not nil?)
+
+(defn (print-elems xs)
+  (if (not (nil? xs))
+    (begin
+      (print (car xs))
+      (print-elems (cdr xs)))))
+
+(print-elems (quote (1 2 3 4 5 (6 7))))
+
+(defn (map f xs)
+  (if (not (nil? xs))
+    (cons (f (car xs))
+          (map f (cdr xs)))))
+
+(defn (p x)
+  (print x))
+
+(let! items (quote (t t () () t ())))
+(print "Items:")
+(map p items)
+(print "Inverted:")
+(map p (map not items))

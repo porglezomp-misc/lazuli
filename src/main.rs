@@ -25,9 +25,8 @@ fn run() -> Result<(), Error> {
 
     let mut env = Rc::new(env::Env::new());
     for item in &ast {
-        let (val, new_env) = eval::eval(item, env)?;
+        let (_, new_env) = eval::eval(item, env)?;
         env = new_env;
-        println!("{:#?}", val);
     }
 
     Ok(())
