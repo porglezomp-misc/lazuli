@@ -139,6 +139,10 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
                     }).collect::<Result<_, _>>()?;
                     Ok(Ast::Struct(name, members))
                 }
+                Sexp::Sym(ref s, ..) if s == "quote" => {
+                    // TODO: Assert not too many args
+                    Ok(Ast::Literal(&xs[1]))
+                }
                 Sexp::Sym(ref s, ..) => {
                     let func = Ast::Var(Cow::Borrowed(s));
                     let args = xs[1..].iter()

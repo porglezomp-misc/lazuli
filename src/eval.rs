@@ -5,7 +5,7 @@ use std::rc::Rc;
 use ast::Ast;
 use env::Env;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Nil,
     Int,
@@ -22,6 +22,8 @@ pub enum EvalError {
     NameLookup(String),
     InvalidFunction(String),
     InvalidName(String),
+    UnknownArithmetic(String),
+    UnknownRelation(String),
     BadArity {
         expected: usize,
         got: usize,
@@ -55,6 +57,22 @@ pub enum Val<'a> {
     Continue,
 }
 
+impl<'a> PartialEq for Val<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (&Val::Nil, &Val::Nil) => true,
+            (&Val::Int(a), &Val::Int(b)) => a == b,
+            (&Val::Int(a), &Val::Float(b)) => a as f64 == b && a == b as i64,
+            (&Val::Float(a), &Val::Int(b)) => a as i64 == b && a == b as f64,
+            (&Val::Float(a), &Val::Float(b)) => a == b,
+            (&Val::Str(ref a), &Val::Str(ref b)) => a == b,
+            (&Val::Sym(ref a), &Val::Sym(ref b)) => a == b,
+            (&Val::Tuple(ref a), &Val::Tuple(ref b)) => a == b,
+            (_, _) => false,
+        }
+    }
+}
+
 pub fn eval_literal<'a>(literal: &Sexp<'a>) -> Rc<Val<'a>> {
     Rc::new(match *literal {
         Sexp::Str(ref s, ..) => Val::Str(s.clone()),
@@ -80,9 +98,161 @@ pub fn type_of_term(term: &Val) -> Type {
         Val::Sym(..) => Type::Sym,
         Val::Tuple(..) => Type::Tuple,
         Val::Fn(..) => Type::Fn,
-        Val::Break(..) => unreachable!(),
-        Val::Continue => unreachable!(),
-        Val::Return(..) => unreachable!(),
+        Val::Break(..) | Val::Continue | Val::Return(..) => unreachable!(),
+    }
+}
+
+fn unwrap_as_float<'a>(val: &Rc<Val<'a>>) -> f64 {
+    match **val {
+        Val::Int(i) => i as f64,
+        Val::Float(f) => f,
+        _ => panic!("Only valid for Val::Int or Val::Float, got {:?}", val),
+    }
+}
+
+fn unwrap_as_int<'a>(val: &Rc<Val<'a>>) -> i64 {
+    match **val {
+        Val::Int(i) => i,
+        Val::Float(f) => f as i64,
+        _ => panic!("Only valid for Val::Int or Val::Float, got {:?}", val),
+    }
+}
+
+fn eval_arithmetic<'a>(op: &str, args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+    let mut use_float = false;
+    for expr in args {
+        let ty = type_of_term(expr);
+        if ty == Type::Float { use_float = true; }
+        if ty != Type::Float && ty != Type::Int {
+            return Err(EvalError::TypeError {
+                expected: Type::Float,
+                got: ty,
+            });
+        }
+    }
+
+    Ok(Rc::new(match op {
+        "+" if use_float => {
+            Val::Float(args.iter().fold(0.0, |a, b| a + unwrap_as_float(b)))
+        }
+        "+" => {
+            Val::Int(args.iter().fold(0, |a, b| a + unwrap_as_int(b)))
+        }
+        "-" if use_float => {
+            if args.len() == 0 {
+                Val::Float(0.0)
+            } else if args.len() == 1 {
+                Val::Float(-unwrap_as_float(&args[0]))
+            } else {
+                Val::Float(args[1..].iter().fold(
+                    unwrap_as_float(&args[0]),
+                    |a, b| a - unwrap_as_float(b)
+                ))
+            }
+        }
+        "-" => {
+            if args.len() == 0 {
+                Val::Int(0)
+            } else if args.len() == 1 {
+                Val::Int(-unwrap_as_int(&args[0]))
+            } else {
+                Val::Int(args[1..].iter().fold(
+                    unwrap_as_int(&args[0]),
+                    |a, b| a - unwrap_as_int(b)
+                ))
+            }
+        }
+        "*" if use_float => {
+            Val::Float(args.iter().fold(1.0, |a, b| a * unwrap_as_float(b)))
+        }
+        "*" => {
+            Val::Int(args.iter().fold(1, |a, b| a * unwrap_as_int(b)))
+        }
+        "/" => {
+            if args.len() == 0 {
+                Val::Float(1.0)
+            } else if args.len() == 1 {
+                Val::Float(1.0 / unwrap_as_float(&args[0]))
+            } else {
+                Val::Float(args[1..].iter().fold(
+                    unwrap_as_float(&args[0]),
+                    |a, b| a / unwrap_as_float(b)
+                ))
+            }
+        }
+        op => return Err(EvalError::UnknownArithmetic(op.into()))
+    }))
+}
+
+fn eval_relations<'a>(op: &str, args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+    let mut non_num_ty = None;
+    for expr in args {
+        let ty = type_of_term(expr);
+        if ty != Type::Float && ty != Type::Int {
+            non_num_ty = Some(ty);
+            break;
+        }
+    }
+    let success: bool;
+    match op {
+        "==" => {
+            success = args.iter().zip(&args[1..]).all(|(a, b)| a == b);
+        }
+        "<=" => {
+            if let Some(ty) = non_num_ty {
+                return Err(EvalError::TypeError {
+                    expected: Type::Float,
+                    got: ty,
+                });
+            }
+            success = args.iter().zip(&args[1..]).all(|(a, b)| unwrap_as_float(a) <= unwrap_as_float(b));
+        }
+        ">=" => {
+            if let Some(ty) = non_num_ty {
+                return Err(EvalError::TypeError {
+                    expected: Type::Float,
+                    got: ty,
+                });
+            }
+            success = args.iter().zip(&args[1..]).all(|(a, b)| unwrap_as_float(a) >= unwrap_as_float(b));
+        }
+        "<" => {
+            if let Some(ty) = non_num_ty {
+                return Err(EvalError::TypeError {
+                    expected: Type::Float,
+                    got: ty,
+                });
+            }
+            success = args.iter().zip(&args[1..]).all(|(a, b)| unwrap_as_float(a) < unwrap_as_float(b));
+        }
+        ">" => {
+            if let Some(ty) = non_num_ty {
+                return Err(EvalError::TypeError {
+                    expected: Type::Float,
+                    got: ty,
+                });
+            }
+            success = args.iter().zip(&args[1..]).all(|(a, b)| unwrap_as_float(a) > unwrap_as_float(b));
+        }
+        "!=" => {
+            let mut cond = true;
+            'check: for (i, lhs) in args.iter().enumerate() {
+                for (j, rhs) in args.iter().enumerate() {
+                    if i == j { continue; }
+                    if lhs == rhs {
+                        cond = false;
+                        break 'check;
+                    }
+                }
+            }
+            success = cond;
+        }
+        op => return Err(EvalError::UnknownRelation(op.into()))
+    }
+    if success {
+        Ok(Rc::new(Val::Sym("t".into())))
+    } else {
+        Ok(Rc::new(Val::Nil))
     }
 }
 
@@ -179,6 +349,30 @@ pub fn eval<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(Rc<Val<'a>>, Rc<Env<
                     }
                     println!();
                     return Ok((last_val, env))
+                } else if s == "+" || s == "-" || s == "*" || s == "/" {
+                    let args = args.iter().map(|expr| {
+                        eval(expr, env.clone()).map(|x| x.0)
+                    }).collect::<Result<_, _>>()?;
+                    return Ok((eval_arithmetic(s, &args)?, env));
+                } else if s == "==" || s == "!=" || s == "<=" || s == ">=" || s == "<" || s == ">" {
+                    let args = args.iter().map(|expr| {
+                        eval(expr, env.clone()).map(|x| x.0)
+                    }).collect::<Result<_, _>>()?;
+                    return Ok((eval_relations(s, &args)?, env));
+                } else if s == "null?" {
+                    if args.len() != 1 {
+                        return Err(EvalError::BadArity {
+                            expected: 1,
+                            got: args.len(),
+                        })
+                    }
+
+                    let (expr, _) = eval(&args[0], env.clone())?;
+                    if type_of_term(&expr) == Type::Nil {
+                        return Ok((Rc::new(Val::Sym("t".into())), env));
+                    } else {
+                        return Ok((Rc::new(Val::Nil), env));
+                    }
                 }
             }
 

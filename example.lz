@@ -8,9 +8,9 @@
 (defn (fib-helper a b n)
   (if (<= n 0)
     (return a))
-  (if (= n 1)
+  (if (== n 1)
     (return b))
-  (fib b (+ a b) (- n 1)))
+  (fib-helper b (+ a b) (- n 1)))
 
 (defn (fib n)
   (fib-helper 0 1 n))
@@ -19,3 +19,4 @@
 (let! y 3.0)
 (let! a-point (point x y))
 (print a-point (point/x a-point) (point/y a-point))
+(print (fib 10))
