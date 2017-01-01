@@ -2,6 +2,8 @@ extern crate ess;
 
 mod ast;
 mod error;
+mod env;
+mod eval;
 
 use std::io::{self, Read, Write};
 use error::Error;
