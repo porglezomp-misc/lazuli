@@ -16,6 +16,7 @@ pub enum Prim {
     Print,
     MakeTuple,
     IndexTuple,
+    MakeList,
 }
 
 impl Prim {
@@ -35,6 +36,7 @@ impl Prim {
             Print => call_print(args),
             MakeTuple => call_make_tuple(args),
             IndexTuple => call_index_tuple(args),
+            MakeList => call_make_list(args),
         }
     }
 }
@@ -230,6 +232,12 @@ fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalErro
     }
 
     Ok(tup[idx].clone())
+}
+
+fn call_make_list<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+    Ok(args.iter().rev()
+       .fold(Rc::new(Val::Nil),
+             |cdr, car| Rc::new(Val::Tuple(vec![car.clone(), cdr]))))
 }
 
 

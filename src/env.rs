@@ -26,6 +26,7 @@ impl<'a> Env<'a> {
         names.insert("print".into(), Var(Rc::new(Val::Prim(Print))));
         names.insert("tuple".into(), Var(Rc::new(Val::Prim(MakeTuple))));
         names.insert("tuple/nth".into(), Var(Rc::new(Val::Prim(IndexTuple))));
+        names.insert("list".into(), Var(Rc::new(Val::Prim(MakeList))));
         Env {
             parent: None,
             names: names,

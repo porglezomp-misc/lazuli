@@ -28,4 +28,22 @@
       0
       (+ 1 (list/length (cdr xs)))))
 
+(defn (list/nth n xs)
+  (if xs
+      (if (<= n 0)
+          (car xs)
+          (list/nth (- n 1) (cdr xs)))))
+
+(defn (list/set-nth n xs val)
+  (if xs
+      (if (<= n 0)
+          (cons val (cdr xs))
+          (cons (car xs) (list/set-nth (- n 1) (cdr xs) val)))))
+
+(defn (list/update-nth n xs f)
+  (if xs
+      (if (<= n 0)
+          (cons (f (car xs)) (cdr xs))
+          (cons (car xs) (list/update-nth (- n 1) (cdr xs) f)))))
+
 (let! not nil?)
