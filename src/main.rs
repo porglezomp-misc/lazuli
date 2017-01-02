@@ -119,7 +119,17 @@ fn run(mut args: Args) -> Result<(), Error> {
         }
 
         for item in &ast {
-            eval::eval(item, &mut env)?;
+            if let Err(e) = eval::eval(item, &mut env) {
+                let mut e = Some(&e);
+                while let Some(err) = e {
+                    if let Some((start, end)) = err.get_span() {
+                        println!("ERROR:\n{}", &buf[start..end])
+                    } else {
+                        println!("ERROR:\n{:?}", err);
+                    }
+                    e = err.get_cause();
+                }
+            }
         }
 
         Ok(())

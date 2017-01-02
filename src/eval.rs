@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::fmt::{self, Display};
 
 use ess::Sexp;
+use ess::span::ByteSpan;
 
 use ast::Ast;
 use env::Env;
@@ -28,17 +29,51 @@ pub enum EvalError {
     ContinueOutsideLoop,
     BreakOutsideLoop,
     BadArity {
+        at: Option<ByteSpan>,
         expected: usize,
         got: usize,
     },
     OutOfBounds {
+        at: Option<ByteSpan>,
         index: usize,
         length: usize,
     },
     TypeError {
+        at: Option<ByteSpan>,
         expected: Type,
         got: Type,
     },
+    If(Box<EvalError>, ByteSpan),
+    Call(Box<EvalError>, ByteSpan),
+    Let(Box<EvalError>, ByteSpan),
+    Break(Box<EvalError>, ByteSpan),
+    Return(Box<EvalError>, ByteSpan),
+    Loop(Box<EvalError>, ByteSpan),
+    Begin(Box<EvalError>, ByteSpan),
+}
+
+impl EvalError {
+    pub fn get_cause(&self) -> Option<&EvalError> {
+        use self::EvalError::*;
+        match *self {
+            If(ref e, ..) | Call(ref e, ..) | Let(ref e, ..) |
+            Break(ref e, ..) | Return(ref e, ..) | Loop(ref e, ..) |
+            Begin(ref e, ..) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn get_span(&self) -> Option<ByteSpan> {
+        use self::EvalError::*;
+        match *self {
+            If(.., l) | Call(.., l) | Let(.., l) |
+            Break(.., l) | Return(.., l) | Loop(.., l) |
+            Begin(.., l) => Some(l),
+            OutOfBounds { at: l, ..} | BadArity { at: l, .. }
+            | TypeError { at: l, .. } => l,
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -70,7 +105,7 @@ impl<'a> Display for Val<'a> {
         match *self {
             Val::Nil => write!(fmt, "()"),
             Val::Int(i) => write!(fmt, "{}", i),
-            Val::Float(f) => write!(fmt, "{:.0}", f),
+            Val::Float(f) => write!(fmt, "{}", f),
             Val::Char(c) => write!(fmt, "#\\{}", c),
             Val::Str(ref s) => write!(fmt, "{:?}", s),
             Val::Sym(ref s) => write!(fmt, "{}", s),
@@ -159,6 +194,15 @@ macro_rules! try_get_value {
     }
 }
 
+macro_rules! chain_error {
+    ($val:expr, $Err:expr, $span:expr) => {
+        match $val {
+            Ok(v) => v,
+            Err(e) => return Err($Err(Box::new(e), $span).into()),
+        }
+    }
+}
+
 pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>, Rc<Env<'a>>), EvalError> {
     match *ast {
         Ast::Nil => {
@@ -173,22 +217,23 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
         Ast::Literal(ref val) => {
             Ok((ControlFlow::Value(eval_literal(val)), env))
         }
-        Ast::Var(ref name) => {
+        Ast::Var(ref name, ..) => {
             env.lookup(name.borrow())
                 .map(|x| (ControlFlow::Value(x.0.clone()), env.clone()))
                 .ok_or_else(|| EvalError::NameLookup(name.clone().into_owned()))
         }
-        Ast::Struct(ref name, ref members) => {
-            let constructor = Ast::Call(Box::new(Ast::Var("tuple".into())), members.iter().map(|member| {
-                Ast::Var(member.clone())
-            }).collect());
+        Ast::Struct(ref name, ref members, span) => {
+            let constructor = Ast::Call(Box::new(Ast::Var("tuple".into(), (0, 0))),
+                                        members.iter().map(|member| {
+                Ast::Var(member.clone(), (0, 0))
+            }).collect(), span);
             let constructor = Rc::new(Val::Fn(members.clone(), constructor));
             let accessors = members.iter().enumerate().map(|(i, member)| {
                 Rc::new(Val::Fn(vec![member.clone()],
-                                Ast::Call(Box::new(Ast::Var("tuple/nth".into())), vec![
+                                Ast::Call(Box::new(Ast::Var("tuple/nth".into(), (0, 0))), vec![
                                     Ast::Int(i as i64),
-                                    Ast::Var(member.clone()),
-                                ])))
+                                    Ast::Var(member.clone(), (0, 0)),
+                                ], (0, 0))))
             });
             let mut env = (*env).clone();
             env.insert(format!("{}", name).into(), Var(constructor.clone()));
@@ -197,23 +242,31 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
             }
             Ok((ControlFlow::Value(constructor), Rc::new(env)))
         }
-        Ast::Defn(ref name, ref args, ref code) => {
-            let func = Rc::new(Val::Fn(args.clone(), Ast::Begin(code.clone())));
+        Ast::Defn(ref name, ref args, ref code, span) => {
+            let func = Rc::new(Val::Fn(args.clone(), Ast::Begin(code.clone(), span)));
             let mut env = (*env).clone();
             env.insert(name.clone().into_owned(), Var(func.clone()));
             Ok((ControlFlow::Value(func), Rc::new(env)))
         }
-        Ast::Call(ref func, ref args) => {
-            let (func, _) = eval_core(func, env.clone())?;
+        Ast::Call(ref func, ref args, span) => {
+            let (func, _) = chain_error!(
+                eval_core(func, env.clone()),
+                EvalError::Call,
+                span);
             let func = try_get_value!(func, env);
             match *func {
                 Val::Fn(ref names, ref body) => {
                     if args.len() != names.len() {
-                        return Err(EvalError::BadArity{ got: args.len(), expected: names.len() });
+                        return Err(EvalError::BadArity {
+                            got: args.len(),
+                            expected: names.len(),
+                            at: Some(span),
+                        });
                     }
                     let mut call_env = Env::with_parent(env.clone());
                     for (name, arg) in names.iter().zip(args) {
-                        let (arg_val, _) = eval_core(arg, env.clone())?;
+                        let (arg_val, _) = chain_error!(
+                            eval_core(arg, env.clone()), EvalError::Call, span);
                         let arg_val = try_get_value!(arg_val, env);
                         call_env.insert(name.clone().into_owned(), Var(arg_val));
                     }
@@ -222,7 +275,8 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 Val::Prim(ref prim) => {
                     let mut arg_values = Vec::new();
                     for arg in args {
-                        let (arg_val, _) = eval_core(arg, env.clone())?;
+                        let (arg_val, _) = chain_error!(
+                            eval_core(arg, env.clone()), EvalError::Call, span);
                         let arg_val = try_get_value!(arg_val, env);
                         arg_values.push(arg_val);
                     }
@@ -233,49 +287,58 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 }
             }
         }
-        Ast::Let(ref var, ref val) => {
+        Ast::Let(ref var, ref val, span) => {
             let name = match *var.clone() {
-                Ast::Var(name) => name.into(),
-                ref other => return Err(EvalError::InvalidName(format!("{:#?}", other))),
+                Ast::Var(name, ..) => name.into(),
+                ref other => {
+                    return Err(EvalError::InvalidName(
+                        format!("{:#?} at {:?}", other, span)
+                    ));
+                }
             };
-            let (val, _) = eval_core(val, env.clone())?;
+            let (val, _) = chain_error!(
+                eval_core(val, env.clone()), EvalError::Let, span);
             let val = try_get_value!(val, env);
             let mut env = (*env).clone();
             env.insert(name, Var(val));
             Ok((nil(), Rc::new(env)))
         }
-        Ast::If(ref cond, ref if_true, ref if_false) => {
-            let (cond, _) = eval_core(cond, env.clone())?;
+        Ast::If(ref cond, ref if_true, ref if_false, span) => {
+            let (cond, _) = chain_error!(
+                eval_core(cond, env.clone()), EvalError::If, span);
             let cond = try_get_value!(cond, env);
             match *cond {
                 Val::Nil => Ok((eval_core(if_false, env.clone())?.0, env)),
                 _ => Ok((eval_core(if_true, env.clone())?.0, env)),
             }
         }
-        Ast::Break(None) => {
+        Ast::Break(None, ..) => {
             Ok((ControlFlow::Break(Rc::new(Val::Nil)), env))
         }
-        Ast::Break(Some(ref val)) => {
-            let (val, _) = eval_core(&val, env.clone())?;
+        Ast::Break(Some(ref val), span) => {
+            let (val, _) = chain_error!(
+                eval_core(&val, env.clone()), EvalError::Break, span);
             let val = try_get_value!(val, env);
             Ok((ControlFlow::Break(val), env))
         }
-        Ast::Continue => {
+        Ast::Continue(..) => {
             Ok((ControlFlow::Continue, env))
         }
-        Ast::Return(None) => {
+        Ast::Return(None, ..) => {
             Ok((ControlFlow::Return(Rc::new(Val::Nil)), env))
         }
-        Ast::Return(Some(ref val)) => {
-            let (val, _) = eval_core(&val, env.clone())?;
+        Ast::Return(Some(ref val), span) => {
+            let (val, _) = chain_error!(
+                eval_core(&val, env.clone()), EvalError::Return, span);
             let val = try_get_value!(val, env);
             Ok((ControlFlow::Return(val), env))
         }
-        Ast::Loop(ref body) => {
+        Ast::Loop(ref body, span) => {
             loop {
                 let mut loop_env = env.clone();
                 for expr in body {
-                    let (val, new_env) = eval_core(expr, loop_env)?;
+                    let (val, new_env) = chain_error!(
+                        eval_core(expr, loop_env), EvalError::Loop, span);
                     loop_env = new_env;
                     match val {
                         ControlFlow::Break(ref val) => {
@@ -290,11 +353,12 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 }
             }
         }
-        Ast::Begin(ref body) => {
+        Ast::Begin(ref body, span) => {
             let mut last_val = Rc::new(Val::Nil);
             let mut block_env = env.clone();
             for expr in body {
-                let (new_val, new_env) = eval_core(expr, block_env)?;
+                let (new_val, new_env) = chain_error!(
+                    eval_core(expr, block_env), EvalError::Begin, span);
                 block_env = new_env;
                 match new_val {
                     ControlFlow::Break(..) | ControlFlow::Continue |

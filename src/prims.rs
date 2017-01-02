@@ -51,7 +51,9 @@ macro_rules! should_use_float {
             let ty = type_of_term(expr);
             if ty == Type::Float { use_float = true; }
             if ty != Type::Float && ty != Type::Int {
+                println!("{}", line!());
                 return Err(EvalError::TypeError {
+                    at: None,
                     expected: Type::Float,
                     got: ty,
                 });
@@ -107,7 +109,7 @@ fn call_times<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
 }
 
 fn call_divide<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
-    let _ = should_use_float!(args);
+    should_use_float!(args);
     Ok(Rc::new(if args.len() == 0 {
         Val::Float(1.0)
     } else if args.len() == 1 {
@@ -143,6 +145,7 @@ macro_rules! require_numeric_args {
             let ty = type_of_term(expr);
             if ty != Type::Float && ty != Type::Int {
                 return Err(EvalError::TypeError {
+                    at: None,
                     expected: Type::Float,
                     got: ty,
                 });
@@ -205,12 +208,17 @@ fn call_make_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError
 
 fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
     if args.len() != 2 {
-        return Err(EvalError::BadArity { expected: 2, got: args.len() });
+        return Err(EvalError::BadArity {
+            at: None,
+            expected: 2,
+            got: args.len()
+        });
     }
 
     let idx = match *args[0] {
         Val::Int(idx) => idx as usize,
         ref other => return Err(EvalError::TypeError {
+            at: None,
             expected: Type::Int,
             got: type_of_term(other),
         })
@@ -219,6 +227,7 @@ fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalErro
     let tup = match *args[1] {
         Val::Tuple(ref items) => items,
         ref other => return Err(EvalError::TypeError{
+            at: None,
             expected: Type::Tuple,
             got: type_of_term(other),
         })
@@ -226,6 +235,7 @@ fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalErro
 
     if tup.len() <= idx {
         return Err(EvalError::OutOfBounds {
+            at: None,
             index: idx,
             length: tup.len(),
         })
