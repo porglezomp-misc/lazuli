@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 use std::rc::Rc;
 
 use eval::{Val, Var};
@@ -6,13 +6,13 @@ use eval::{Val, Var};
 #[derive(Debug, Clone)]
 pub struct Env<'a> {
     parent: Option<Rc<Env<'a>>>,
-    names: HashMap<String, Var<'a>>,
+    names: FnvHashMap<String, Var<'a>>,
 }
 
 impl<'a> Env<'a> {
     pub fn with_primitives() -> Self {
         use prims::Prim::*;
-        let mut names = HashMap::new();
+        let mut names = FnvHashMap::default();
         names.insert("+".into(), Var(Rc::new(Val::Prim(Plus))));
         names.insert("-".into(), Var(Rc::new(Val::Prim(Minus))));
         names.insert("*".into(), Var(Rc::new(Val::Prim(Times))));
@@ -36,7 +36,7 @@ impl<'a> Env<'a> {
     pub fn with_parent(parent: Rc<Env<'a>>) -> Env<'a> {
         Env {
             parent: Some(parent),
-            names: HashMap::new(),
+            names: FnvHashMap::default(),
         }
     }
 

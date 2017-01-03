@@ -5,3 +5,4 @@ authors = ["Caleb Jones <code@calebjones.net>"]
 
 [dependencies]
 ess = "^0.4.0"
+fnv = "^1.0.5"

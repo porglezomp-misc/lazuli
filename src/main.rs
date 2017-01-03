@@ -1,4 +1,5 @@
 extern crate ess;
+extern crate fnv;
 
 mod ast;
 mod error;
