@@ -19,20 +19,25 @@
           (cdr xs))))
 
 (defn (list/foldl f x xs)
-  (if (nil? xs)
-      x
-      (list/foldl f (f x (car xs)) (cdr xs))))
+  (loop ((x x) (xs xs))
+    (if (nil? xs) (break x))
+    (continue (f x (car xs)) (cdr xs))))
 
 (defn (list/length xs)
   (if (nil? xs)
       0
       (+ 1 (list/length (cdr xs)))))
 
+(defn (list/reverse xs)
+  (loop ((accum nil) (xs xs))
+    (if (nil? xs) (break accum))
+    (continue (cons (car xs) accum) (cdr xs))))
+
 (defn (list/nth n xs)
-  (if xs
-      (if (<= n 0)
-          (car xs)
-          (list/nth (- n 1) (cdr xs)))))
+  (loop ((n n) (xs xs))
+    (if (nil? xs) (break nil))
+    (if (<= n 0) (break (car xs)))
+    (continue (- n 1) (cdr xs))))
 
 (defn (list/set-nth n xs val)
   (if xs
