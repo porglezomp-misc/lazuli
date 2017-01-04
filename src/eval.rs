@@ -48,6 +48,7 @@ pub enum EvalError {
     Let(Box<EvalError>, ByteSpan),
     Break(Box<EvalError>, ByteSpan),
     Return(Box<EvalError>, ByteSpan),
+    Continue(Box<EvalError>, ByteSpan),
     Loop(Box<EvalError>, ByteSpan),
     Begin(Box<EvalError>, ByteSpan),
 }
@@ -97,7 +98,7 @@ pub enum ControlFlow<'a> {
     Value(Rc<Val<'a>>),
     Break(Rc<Val<'a>>),
     Return(Rc<Val<'a>>),
-    Continue,
+    Continue(Vec<Rc<Val<'a>>>),
 }
 
 impl<'a> Display for Val<'a> {
@@ -171,7 +172,7 @@ pub fn eval<'a>(ast: &Ast<'a>, env: &mut Rc<Env<'a>>) -> Result<Rc<Val<'a>>, Eva
     *env = new_env;
     match val {
         ControlFlow::Break(..) => Err(EvalError::BreakOutsideLoop),
-        ControlFlow::Continue => Err(EvalError::ContinueOutsideLoop),
+        ControlFlow::Continue(..) => Err(EvalError::ContinueOutsideLoop),
         ControlFlow::Return(val) | ControlFlow::Value(val) => Ok(val),
     }
 }
@@ -321,8 +322,15 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
             let val = try_get_value!(val, env);
             Ok((ControlFlow::Break(val), env))
         }
-        Ast::Continue(..) => {
-            Ok((ControlFlow::Continue, env))
+        Ast::Continue(ref args, span) => {
+            let mut arg_values = Vec::new();
+            for arg in args {
+                let (arg_val, _) = chain_error!(
+                    eval_core(arg, env.clone()), EvalError::Continue, span);
+                let arg_val = try_get_value!(arg_val, env);
+                arg_values.push(arg_val);
+            }
+            Ok((ControlFlow::Continue(arg_values), env))
         }
         Ast::Return(None, ..) => {
             Ok((ControlFlow::Return(Rc::new(Val::Nil)), env))
@@ -333,9 +341,20 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
             let val = try_get_value!(val, env);
             Ok((ControlFlow::Return(val), env))
         }
-        Ast::Loop(ref body, span) => {
-            loop {
-                let mut loop_env = env.clone();
+        Ast::Loop(ref body, ref bindings, span) => {
+            let mut loop_default_env = Env::with_parent(env.clone());
+            for &(ref var, ref val) in bindings {
+                let (val, _) = chain_error!(
+                    eval_core(&val, env.clone()), EvalError::Loop, span);
+                let val = match val {
+                    ControlFlow::Value(val) => val,
+                    other => return Ok((other, env)),
+                };
+                loop_default_env.insert(var.clone().into_owned(), Var(val));
+            }
+            let mut loop_env = Rc::new(loop_default_env.clone());
+            'outer: loop {
+                let loop_top_env = loop_env.clone();
                 for expr in body {
                     let (val, new_env) = chain_error!(
                         eval_core(expr, loop_env), EvalError::Loop, span);
@@ -344,13 +363,20 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                         ControlFlow::Break(ref val) => {
                             return Ok((ControlFlow::Value(val.clone()), env));
                         }
-                        ControlFlow::Continue => break,
+                        ControlFlow::Continue(ref new_val) => {
+                            for (&(ref var, _), val) in bindings.iter().zip(new_val) {
+                                loop_default_env.insert(var.clone().into_owned(), Var(val.clone()));
+                            }
+                            loop_env = Rc::new(loop_default_env.clone());
+                            continue 'outer;
+                        }
                         ControlFlow::Return(ref val) => {
                             return Ok((ControlFlow::Value(val.clone()), env));
                         }
                         ControlFlow::Value(..) => (),
                     }
                 }
+                loop_env = loop_top_env;
             }
         }
         Ast::Begin(ref body, span) => {
@@ -361,7 +387,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                     eval_core(expr, block_env), EvalError::Begin, span);
                 block_env = new_env;
                 match new_val {
-                    ControlFlow::Break(..) | ControlFlow::Continue |
+                    ControlFlow::Break(..) | ControlFlow::Continue(..) |
                     ControlFlow::Return(..) => {
                         return Ok((new_val, env));
                     }

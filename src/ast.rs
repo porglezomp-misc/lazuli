@@ -12,6 +12,8 @@ pub enum AstError<'a> {
     InvalidInCall(Sexp<'a>),
     StructName(Sexp<'a>),
     StructMember(Sexp<'a>),
+    LoopMissingBindings(Sexp<'a>),
+    LoopBadBinding(Sexp<'a>),
 }
 
 impl<'a> AstError<'a> {
@@ -25,6 +27,8 @@ impl<'a> AstError<'a> {
             InvalidInCall(ref s) => InvalidInCall(s.to_owned()),
             StructName(ref s) => StructName(s.to_owned()),
             StructMember(ref s) => StructMember(s.to_owned()),
+            LoopMissingBindings(ref s) => LoopMissingBindings(s.to_owned()),
+            LoopBadBinding(ref s) => LoopBadBinding(s.to_owned()),
         }
     }
 }
@@ -35,10 +39,10 @@ pub enum Ast<'a> {
     If(Box<Ast<'a>>, Box<Ast<'a>>, Box<Ast<'a>>, ByteSpan),
     Let(Box<Ast<'a>>, Box<Ast<'a>>, ByteSpan),
     Begin(Vec<Ast<'a>>, ByteSpan),
-    Loop(Vec<Ast<'a>>, ByteSpan),
+    Loop(Vec<Ast<'a>>, Vec<(Cow<'a, str>, Ast<'a>)>, ByteSpan),
     Return(Option<Box<Ast<'a>>>, ByteSpan),
     Break(Option<Box<Ast<'a>>>, ByteSpan),
-    Continue(ByteSpan),
+    Continue(Vec<Ast<'a>>, ByteSpan),
     Defn(Cow<'a, str>, Vec<Cow<'a, str>>, Vec<Ast<'a>>, ByteSpan),
     Struct(Cow<'a, str>, Vec<Cow<'a, str>>, ByteSpan),
     Var(Cow<'a, str>, ByteSpan),
@@ -72,8 +76,11 @@ impl<'a> Ast<'a> {
                 body.iter().map(Ast::to_owned).collect(),
                 span,
             ),
-            Loop(ref body, span) => Begin(
+            Loop(ref body, ref bindings, span) => Loop(
                 body.iter().map(Ast::to_owned).collect(),
+                bindings.iter()
+                    .map(|t| (t.0.clone().into_owned().into(), t.1.to_owned()))
+                    .collect(),
                 span
             ),
             Return(None, span) => Return(None, span),
@@ -86,7 +93,10 @@ impl<'a> Ast<'a> {
                 Some(Box::new((**val).to_owned())),
                 span,
             ),
-            Continue(span) => Continue(span),
+            Continue(ref args, span) => Continue(
+                args.iter().map(Ast::to_owned).collect(),
+                span,
+            ),
             Defn(ref name, ref args, ref body, span) => Defn(
                 name.clone().into_owned().into(),
                 args.iter().map(|arg| arg.clone().into_owned().into()).collect(),
@@ -159,9 +169,30 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
                     Ok(Ast::Begin(body, span))
                 }
                 Sexp::Sym(ref s, ..) if s == "loop" => {
-                    let body = xs[1..].iter().map(make_ast)
+                    let bindings = if let Some(&Sexp::List(ref binds, ..)) = xs.get(1) {
+                        let mut bindings = Vec::new();
+                        for bind in binds {
+                            match *bind {
+                                Sexp::List(ref xs, ..) => {
+                                    if xs.len() != 2 {
+                                        return Err(AstError::LoopBadBinding(bind.clone()));
+                                    }
+                                    if let Sexp::Sym(ref name, ..) = xs[0] {
+                                        bindings.push((name.clone(), make_ast(&xs[1])?));
+                                    } else {
+                                        return Err(AstError::LoopBadBinding(bind.clone()));
+                                    };
+                                }
+                                ref bind => return Err(AstError::LoopBadBinding(bind.clone())),
+                            }
+                        }
+                        bindings
+                    } else {
+                        return Err(AstError::LoopMissingBindings(sexp.clone()));
+                    };
+                    let body = xs[2..].iter().map(make_ast)
                         .collect::<Result<_, _>>()?;
-                    Ok(Ast::Loop(body, span))
+                    Ok(Ast::Loop(body, bindings, span))
                 }
                 Sexp::Sym(ref s, ..) if s == "return" => {
                     // TODO: Assert not too many args
@@ -182,8 +213,9 @@ pub fn make_ast<'a>(sexp: &'a Sexp<'a>) -> Result<Ast<'a>, AstError<'a>> {
                     Ok(Ast::Break(result, span))
                 }
                 Sexp::Sym(ref s, ..) if s == "continue" => {
-                    // TODO: Assert not too many args
-                    Ok(Ast::Continue(span))
+                    let args = xs[1..].iter().map(make_ast)
+                        .collect::<Result<_, _>>()?;
+                    Ok(Ast::Continue(args, span))
                 }
                 Sexp::Sym(ref s, ..) if s == "defn" => {
                     let (name, args) = defn_get_args(&xs[1])?;
