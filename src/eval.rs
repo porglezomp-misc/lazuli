@@ -87,7 +87,7 @@ pub enum Val<'a> {
     Char(char),
     Str(Cow<'a, str>),
     Sym(Cow<'a, str>),
-    Tuple(Vec<Value<'a>>),
+    Tuple(Vec<Value<'a>>, Option<Cow<'a, str>>),
     Fn(Vec<Cow<'a, str>>, Ast<'a>),
     Prim(Prim),
     Hole,
@@ -139,8 +139,11 @@ impl<'a> Display for Value<'a> {
             Val::Char(c) => write!(fmt, "#\\{}", c),
             Val::Str(ref s) => write!(fmt, "{:?}", s),
             Val::Sym(ref s) => write!(fmt, "{}", s),
-            Val::Tuple(ref t) => {
-                write!(fmt, "(tuple")?;
+            Val::Tuple(ref t, ref tag) => {
+                match *tag {
+                    Some(ref tag) => write!(fmt, "(#tuple<{}>", tag)?,
+                    None => write!(fmt, "(#tuple")?,
+                }
                 for elem in t {
                     write!(fmt, " {}", elem)?;
                 }
@@ -169,7 +172,8 @@ impl<'a> PartialEq for Val<'a> {
             (&Val::Float(a), &Val::Float(b)) => a == b,
             (&Val::Str(ref a), &Val::Str(ref b)) => a == b,
             (&Val::Sym(ref a), &Val::Sym(ref b)) => a == b,
-            (&Val::Tuple(ref a), &Val::Tuple(ref b)) => a == b,
+            (&Val::Tuple(ref a, ref tag_a), &Val::Tuple(ref b, ref tag_b)) =>
+                tag_a == tag_b && a == b,
             (_, _) => false,
         }
     }
@@ -184,7 +188,8 @@ pub fn eval_literal<'a>(literal: &Sexp<'a>) -> Value<'a> {
         Sexp::Char(c, ..) => Val::Char(c),
         Sexp::List(ref v, ..) => {
             v.iter().rev().fold(Val::Nil, |cdr, car| {
-                Val::Tuple(vec![eval_literal(car), Value::new(cdr)])
+                Val::Tuple(vec![eval_literal(car), Value::new(cdr)],
+                           Some(Cow::Borrowed("cons")))
             })
         }
     })
@@ -261,10 +266,17 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 .ok_or_else(|| EvalError::NameLookup(name.clone().into_owned()))
         }
         Ast::Struct(ref name, ref members, span) => {
-            let constructor = Ast::Call(Box::new(Ast::Var("tuple".into(), (0, 0))),
-                                        members.iter().map(|member| {
-                Ast::Var(member.clone(), (0, 0))
-            }).collect(), span);
+            let constructor = Ast::Call(
+                Box::new(Ast::Var("tuple/tag:set".into(), (0, 0))),
+                vec![
+                    Ast::Call(
+                        Box::new(Ast::Var("tuple".into(), (0, 0))),
+                        members.iter().map(|member| {
+                            Ast::Var(member.clone(), (0, 0))
+                        }).collect(), span),
+                    Ast::Literal(Cow::Owned(Sexp::Sym(name.clone(), (0, 0)))),
+                ],
+                span);
             let constructor = Value::new(Val::Fn(members.clone(), constructor));
             let accessors = members.iter().enumerate().map(|(i, member)| {
                 Value::new(Val::Fn(vec![member.clone()],

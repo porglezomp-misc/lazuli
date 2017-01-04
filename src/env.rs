@@ -26,6 +26,8 @@ impl<'a> Env<'a> {
         names.insert("print".into(), Value::new(Val::Prim(Print)));
         names.insert("tuple".into(), Value::new(Val::Prim(MakeTuple)));
         names.insert("tuple/nth".into(), Value::new(Val::Prim(IndexTuple)));
+        names.insert("tuple/tag:set".into(), Value::new(Val::Prim(SetTupleTag)));
+        names.insert("tuple/tag".into(), Value::new(Val::Prim(GetTupleTag)));
         names.insert("list".into(), Value::new(Val::Prim(MakeList)));
         names.insert("hole".into(), Value::new(Val::Prim(MakeHole)));
         names.insert("hole/fill".into(), Value::new(Val::Prim(FillHole)));

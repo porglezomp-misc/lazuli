@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use eval::{Val, Value, EvalError, Type, type_of_term};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +17,8 @@ pub enum Prim {
     Print,
     MakeTuple,
     IndexTuple,
+    SetTupleTag,
+    GetTupleTag,
     MakeList,
     MakeHole,
     FillHole,
@@ -37,6 +41,8 @@ impl Prim {
             Print => call_print(args),
             MakeTuple => call_make_tuple(args),
             IndexTuple => call_index_tuple(args),
+            SetTupleTag => call_set_tuple_tag(args),
+            GetTupleTag => call_get_tuple_tag(args),
             MakeList => call_make_list(args),
             MakeHole => call_make_hole(args),
             FillHole => call_fill_hole(args),
@@ -202,11 +208,7 @@ fn call_print<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
 // Constructor Functions ////////////////////////////////////////////////////////
 
 fn call_make_tuple<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
-    if args.len() == 0 {
-        Ok(Value::new(Val::Nil))
-    } else {
-        Ok(Value::new(Val::Tuple(args.clone())))
-    }
+    Ok(Value::new(Val::Tuple(args.clone(), None)))
 }
 
 fn call_index_tuple<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
@@ -228,7 +230,7 @@ fn call_index_tuple<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     };
 
     let tup = match *args[1].val() {
-        Val::Tuple(ref items) => items.clone(),
+        Val::Tuple(ref items, ..) => items.clone(),
         _ => return Err(EvalError::TypeError{
             at: None,
             expected: Type::Tuple,
@@ -247,10 +249,74 @@ fn call_index_tuple<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     Ok(tup[idx].clone())
 }
 
+fn call_set_tuple_tag<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
+    if args.len() != 2 {
+        return Err(EvalError::BadArity {
+            at: None,
+            expected: 0,
+            got: args.len(),
+        });
+    }
+
+    let ref elems = *args[0].val();
+    let elems = if let Val::Tuple(ref elems, _) = *elems {
+        elems
+    } else {
+        return Err(EvalError::TypeError {
+            at: None,
+            expected: Type::Tuple,
+            got: type_of_term(&args[0]),
+        });
+    };
+
+    let ref tag = *args[1].val();
+    let tag = match *tag {
+        Val::Sym(ref tag) => Some(tag.clone()),
+        Val::Nil => None,
+        _ => {
+            return Err(EvalError::TypeError {
+                at: None,
+                expected: Type::Sym,
+                got: type_of_term(&args[1]),
+            });
+        }
+    };
+
+    Ok(Value::new(Val::Tuple(elems.clone(), tag)))
+}
+
+fn call_get_tuple_tag<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
+    if args.len() != 1 {
+        return Err(EvalError::BadArity {
+            at: None,
+            expected: 0,
+            got: args.len(),
+        });
+    }
+
+    let ref tag = *args[0].val();
+    match *tag {
+        Val::Tuple(_, None) => {
+            Ok(Value::new(Val::Nil))
+        }
+        Val::Tuple(_, Some(ref tag)) => {
+            Ok(Value::new(Val::Sym(tag.clone())))
+        }
+        _ => {
+            Err(EvalError::TypeError {
+                at: None,
+                expected: Type::Tuple,
+                got: type_of_term(&args[0]),
+            })
+        }
+    }
+}
+
 fn call_make_list<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     Ok(args.iter().rev()
        .fold(Value::new(Val::Nil),
-             |cdr, car| Value::new(Val::Tuple(vec![car.clone(), cdr]))))
+             |cdr, car| Value::new(Val::Tuple(vec![car.clone(), cdr],
+                                              Some(Cow::Borrowed("cons"))))))
 }
 
 fn call_make_hole<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
