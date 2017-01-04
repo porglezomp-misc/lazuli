@@ -7,16 +7,23 @@
   (== xs nil))
 
 (defn (list/map f xs)
-  (if xs
-    (cons (f (car xs))
-          (list/map f (cdr xs)))))
+  (let! result (hole))
+  (loop ((xs xs) (spot result))
+    (if (nil? xs) (break (hole/fill spot nil)))
+    (let! new-spot (hole))
+    (hole/fill spot (cons (f (car xs)) new-spot))
+    (continue (cdr xs) new-spot))
+  result)
 
 (defn (list/filter p xs)
-  (if xs
-      (if (p (car xs))
-          (cons (car xs)
-                (filter p (cdr xs)))
-          (cdr xs))))
+  (let! result (hole))
+  (loop ((xs xs) (spot result))
+    (if (nil? xs) (break (hole/fill spot nil)))
+    (if (not (p (car xs))) (continue (cdr xs) spot))
+    (let! new-spot (hole))
+    (hole/fill spot (cons (car xs) new-spot))
+    (continue (cdr xs) new-spot))
+  result)
 
 (defn (list/foldl f x xs)
   (loop ((x x) (xs xs))
@@ -24,9 +31,9 @@
     (continue (f x (car xs)) (cdr xs))))
 
 (defn (list/length xs)
-  (if (nil? xs)
-      0
-      (+ 1 (list/length (cdr xs)))))
+  (loop ((count 0) (xs xs))
+    (if (nil? xs) (break count))
+    (continue (+ count 1) (cdr xs))))
 
 (defn (list/reverse xs)
   (loop ((accum nil) (xs xs))
@@ -40,15 +47,25 @@
     (continue (- n 1) (cdr xs))))
 
 (defn (list/set-nth n xs val)
-  (if xs
-      (if (<= n 0)
-          (cons val (cdr xs))
-          (cons (car xs) (list/set-nth (- n 1) (cdr xs) val)))))
+  (let! result (hole))
+  (loop ((n n) (xs xs) (spot result))
+    (if (nil? xs) (break (hole/fill spot nil)))
+    (if (<= n 0) (break (hole/fill spot (cons val (cdr xs)))))
+    (let! new-spot (hole))
+    (hole/fill spot (cons (car xs) new-spot))
+    (continue (- n 1) (cdr xs) new-spot))
+  result)
 
 (defn (list/update-nth n xs f)
-  (if xs
-      (if (<= n 0)
-          (cons (f (car xs)) (cdr xs))
-          (cons (car xs) (list/update-nth (- n 1) (cdr xs) f)))))
+  (let! result (hole))
+  (loop ((n n) (xs xs) (spot result))
+    (if (nil? xs) (break (hole/fill spot nil)))
+    (if (<= n 0)
+      (break (hole/fill spot
+               (cons (f (car xs)) (cdr xs)))))
+    (let! new-spot (hole))
+    (hole/fill spot (cons (car xs) new-spot))
+    (continue (- n 1) (cdr xs) new-spot))
+  result)
 
 (let! not nil?)

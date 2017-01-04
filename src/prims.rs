@@ -1,5 +1,4 @@
-use std::rc::Rc;
-use eval::{Val, EvalError, Type, type_of_term};
+use eval::{Val, Value, EvalError, Type, type_of_term};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prim {
@@ -17,10 +16,12 @@ pub enum Prim {
     MakeTuple,
     IndexTuple,
     MakeList,
+    MakeHole,
+    FillHole,
 }
 
 impl Prim {
-    pub fn call<'a>(&self, args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+    pub fn call<'a>(&self, args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
         use self::Prim::*;
         match *self {
             Plus => call_plus(args),
@@ -37,6 +38,8 @@ impl Prim {
             MakeTuple => call_make_tuple(args),
             IndexTuple => call_index_tuple(args),
             MakeList => call_make_list(args),
+            MakeHole => call_make_hole(args),
+            FillHole => call_fill_hole(args),
         }
     }
 }
@@ -63,18 +66,18 @@ macro_rules! should_use_float {
     }}
 }
 
-fn call_plus<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_plus<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     let use_float = should_use_float!(args);
-    Ok(Rc::new(if use_float {
+    Ok(Value::new(if use_float {
         Val::Float(args.iter().fold(0.0, |a, b| a + unwrap_as_float(b)))
     } else {
         Val::Int(args.iter().fold(0, |a, b| a + unwrap_as_int(b)))
     }))
 }
 
-fn call_minus<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_minus<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     let use_float = should_use_float!(args);
-    Ok(Rc::new(if use_float {
+    Ok(Value::new(if use_float {
         if args.len() == 0 {
             Val::Float(0.0)
         } else if args.len() == 1 {
@@ -99,18 +102,18 @@ fn call_minus<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
     }))
 }
 
-fn call_times<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_times<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     let use_float = should_use_float!(args);
-    Ok(Rc::new(if use_float {
+    Ok(Value::new(if use_float {
         Val::Float(args.iter().fold(1.0, |a, b| a * unwrap_as_float(b)))
     } else {
         Val::Int(args.iter().fold(1, |a, b| a * unwrap_as_int(b)))
     }))
 }
 
-fn call_divide<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_divide<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     should_use_float!(args);
-    Ok(Rc::new(if args.len() == 0 {
+    Ok(Value::new(if args.len() == 0 {
         Val::Float(1.0)
     } else if args.len() == 1 {
         Val::Float(1.0 / unwrap_as_float(&args[0]))
@@ -125,11 +128,11 @@ fn call_divide<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
 
 // Relational Operators ////////////////////////////////////////////////////////
 
-fn call_equals<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_equals<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     Ok(bool_to_term(args.iter().zip(&args[1..]).all(|(a, b)| a == b)))
 }
 
-fn call_not_equals<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_not_equals<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     for (i, lhs) in args.iter().enumerate() {
         for (j, rhs) in args.iter().enumerate() {
             if i == j { continue; }
@@ -154,14 +157,14 @@ macro_rules! require_numeric_args {
     }
 }
 
-fn call_less_equals<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_less_equals<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     require_numeric_args!(args);
     Ok(bool_to_term(args.iter()
                     .zip(&args[1..])
                     .all(|(a, b)| unwrap_as_float(a) <= unwrap_as_float(b))))
 }
 
-fn call_greater_equals<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_greater_equals<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     require_numeric_args!(args);
     Ok(bool_to_term(args.iter()
                     .zip(&args[1..])
@@ -169,13 +172,13 @@ fn call_greater_equals<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalE
 
 }
 
-fn call_less<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_less<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     require_numeric_args!(args);
     Ok(bool_to_term(args.iter().zip(&args[1..])
                     .all(|(a, b)| unwrap_as_float(a) < unwrap_as_float(b))))
 }
 
-fn call_greater<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_greater<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     require_numeric_args!(args);
     Ok(bool_to_term(args.iter().zip(&args[1..])
                     .all(|(a, b)| unwrap_as_float(a) > unwrap_as_float(b))))
@@ -184,7 +187,7 @@ fn call_greater<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
 
 // Print ///////////////////////////////////////////////////////////////////////
 
-fn call_print<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_print<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     for (i, expr) in args.iter().enumerate() {
         if i == args.len() - 1 {
             println!("{}", expr);
@@ -192,21 +195,21 @@ fn call_print<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
             print!("{} ", expr);
         }
     }
-    Ok(args.last().cloned().unwrap_or(Rc::new(Val::Nil)))
+    Ok(args.last().cloned().unwrap_or(Value::new(Val::Nil)))
 }
 
 
-// Tuple Functions /////////////////////////////////////////////////////////////
+// Constructor Functions ////////////////////////////////////////////////////////
 
-fn call_make_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_make_tuple<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     if args.len() == 0 {
-        Ok(Rc::new(Val::Nil))
+        Ok(Value::new(Val::Nil))
     } else {
-        Ok(Rc::new(Val::Tuple(args.clone())))
+        Ok(Value::new(Val::Tuple(args.clone())))
     }
 }
 
-fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_index_tuple<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     if args.len() != 2 {
         return Err(EvalError::BadArity {
             at: None,
@@ -215,21 +218,21 @@ fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalErro
         });
     }
 
-    let idx = match *args[0] {
+    let idx = match *args[0].val() {
         Val::Int(idx) => idx as usize,
-        ref other => return Err(EvalError::TypeError {
+        _ => return Err(EvalError::TypeError {
             at: None,
             expected: Type::Int,
-            got: type_of_term(other),
+            got: type_of_term(&args[0]),
         })
     };
 
-    let tup = match *args[1] {
-        Val::Tuple(ref items) => items,
-        ref other => return Err(EvalError::TypeError{
+    let tup = match *args[1].val() {
+        Val::Tuple(ref items) => items.clone(),
+        _ => return Err(EvalError::TypeError{
             at: None,
             expected: Type::Tuple,
-            got: type_of_term(other),
+            got: type_of_term(&args[1]),
         })
     };
 
@@ -244,35 +247,66 @@ fn call_index_tuple<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalErro
     Ok(tup[idx].clone())
 }
 
-fn call_make_list<'a>(args: &Vec<Rc<Val<'a>>>) -> Result<Rc<Val<'a>>, EvalError> {
+fn call_make_list<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
     Ok(args.iter().rev()
-       .fold(Rc::new(Val::Nil),
-             |cdr, car| Rc::new(Val::Tuple(vec![car.clone(), cdr]))))
+       .fold(Value::new(Val::Nil),
+             |cdr, car| Value::new(Val::Tuple(vec![car.clone(), cdr]))))
+}
+
+fn call_make_hole<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
+    if args.len() != 0 {
+        Err(EvalError::BadArity {
+            at: None,
+            expected: 0,
+            got: args.len(),
+        })
+    } else {
+        Ok(Value::new(Val::Hole))
+    }
+}
+
+fn call_fill_hole<'a>(args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
+    if args.len() != 2 {
+        Err(EvalError::BadArity {
+            at: None,
+            expected: 2,
+            got: args.len(),
+        })
+    } else {
+        match args[0].fill(args[1].val().clone()) {
+            Ok(()) => Ok(args[0].clone()),
+            Err(()) => Err(EvalError::TypeError {
+                at: None,
+                expected: Type::Hole,
+                got: type_of_term(&args[0]),
+            })
+        }
+    }
 }
 
 
 // Conversion Helper Functions /////////////////////////////////////////////////
 
-fn unwrap_as_float<'a>(val: &Rc<Val<'a>>) -> f64 {
-    match **val {
+fn unwrap_as_float(val: &Value) -> f64 {
+    match *val.val() {
         Val::Int(i) => i as f64,
         Val::Float(f) => f,
         _ => panic!("Only valid for Val::Int or Val::Float, got {:?}", val),
     }
 }
 
-fn unwrap_as_int(val: &Rc<Val>) -> i64 {
-    match **val {
+fn unwrap_as_int(val: &Value) -> i64 {
+    match *val.val() {
         Val::Int(i) => i,
         Val::Float(f) => f as i64,
         _ => panic!("Only valid for Val::Int or Val::Float, got {:?}", val),
     }
 }
 
-fn bool_to_term<'a>(p: bool) -> Rc<Val<'a>> {
+fn bool_to_term<'a>(p: bool) -> Value<'a> {
     if p {
-        Rc::new(Val::Sym("t".into()))
+        Value::new(Val::Sym("t".into()))
     } else {
-        Rc::new(Val::Nil)
+        Value::new(Val::Nil)
     }
 }

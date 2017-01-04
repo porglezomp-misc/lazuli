@@ -1,6 +1,7 @@
 use std::borrow::{Borrow, Cow};
-use std::rc::Rc;
+use std::cell::{Ref, RefCell};
 use std::fmt::{self, Display};
+use std::rc::Rc;
 
 use ess::Sexp;
 use ess::span::ByteSpan;
@@ -18,6 +19,7 @@ pub enum Type {
     Str,
     Sym,
     Tuple,
+    Hole,
     Fn,
 }
 
@@ -78,9 +80,6 @@ impl EvalError {
 }
 
 #[derive(Debug, Clone)]
-pub struct Var<'a>(pub Rc<Val<'a>>);
-
-#[derive(Debug, Clone)]
 pub enum Val<'a> {
     Nil,
     Int(i64),
@@ -88,22 +87,52 @@ pub enum Val<'a> {
     Char(char),
     Str(Cow<'a, str>),
     Sym(Cow<'a, str>),
-    Tuple(Vec<Rc<Val<'a>>>),
+    Tuple(Vec<Value<'a>>),
     Fn(Vec<Cow<'a, str>>, Ast<'a>),
     Prim(Prim),
+    Hole,
 }
 
 #[derive(Debug, Clone)]
-pub enum ControlFlow<'a> {
-    Value(Rc<Val<'a>>),
-    Break(Rc<Val<'a>>),
-    Return(Rc<Val<'a>>),
-    Continue(Vec<Rc<Val<'a>>>),
+pub struct Value<'a> {
+    val: Rc<RefCell<Val<'a>>>,
 }
 
-impl<'a> Display for Val<'a> {
+impl<'a> Value<'a> {
+    pub fn new(val: Val) -> Value {
+        Value {
+            val: Rc::new(RefCell::new(val))
+        }
+    }
+
+    pub fn val(&self) -> Ref<Val<'a>> {
+        (*self.val).borrow()
+    }
+
+    pub fn fill(&self, val: Val<'a>) -> Result<(), ()> {
+        let mut contents = (*self.val).borrow_mut();
+        match *contents {
+            Val::Hole => {
+                *contents = val;
+                Ok(())
+            }
+            _ => Err(())
+        }
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub enum ControlFlow<'a> {
+    Value(Value<'a>),
+    Break(Value<'a>),
+    Return(Value<'a>),
+    Continue(Vec<Value<'a>>),
+}
+
+impl<'a> Display for Value<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
+        match *self.val() {
             Val::Nil => write!(fmt, "()"),
             Val::Int(i) => write!(fmt, "{}", i),
             Val::Float(f) => write!(fmt, "{}", f),
@@ -119,7 +148,14 @@ impl<'a> Display for Val<'a> {
             }
             Val::Fn(..) => write!(fmt, "#fn<[anonymous]>"),
             Val::Prim(p) => write!(fmt, "#fn<[{:?}]>", p),
+            Val::Hole => write!(fmt, "#hole"),
         }
+    }
+}
+
+impl<'a> PartialEq for Value<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        *self.val() == *other.val()
     }
 }
 
@@ -139,8 +175,8 @@ impl<'a> PartialEq for Val<'a> {
     }
 }
 
-pub fn eval_literal<'a>(literal: &Sexp<'a>) -> Rc<Val<'a>> {
-    Rc::new(match *literal {
+pub fn eval_literal<'a>(literal: &Sexp<'a>) -> Value<'a> {
+    Value::new(match *literal {
         Sexp::Str(ref s, ..) => Val::Str(s.clone()),
         Sexp::Int(i, ..) => Val::Int(i),
         Sexp::Float(f, ..) => Val::Float(f),
@@ -148,14 +184,14 @@ pub fn eval_literal<'a>(literal: &Sexp<'a>) -> Rc<Val<'a>> {
         Sexp::Char(c, ..) => Val::Char(c),
         Sexp::List(ref v, ..) => {
             v.iter().rev().fold(Val::Nil, |cdr, car| {
-                Val::Tuple(vec![eval_literal(car), Rc::new(cdr)])
+                Val::Tuple(vec![eval_literal(car), Value::new(cdr)])
             })
         }
     })
 }
 
-pub fn type_of_term(term: &Val) -> Type {
-    match *term {
+pub fn type_of_term(term: &Value) -> Type {
+    match *term.val() {
         Val::Nil => Type::Nil,
         Val::Int(..) => Type::Int,
         Val::Float(..) => Type::Float,
@@ -164,10 +200,11 @@ pub fn type_of_term(term: &Val) -> Type {
         Val::Sym(..) => Type::Sym,
         Val::Tuple(..) => Type::Tuple,
         Val::Fn(..) | Val::Prim(..) => Type::Fn,
+        Val::Hole => Type::Hole,
     }
 }
 
-pub fn eval<'a>(ast: &Ast<'a>, env: &mut Rc<Env<'a>>) -> Result<Rc<Val<'a>>, EvalError> {
+pub fn eval<'a>(ast: &Ast<'a>, env: &mut Rc<Env<'a>>) -> Result<Value<'a>, EvalError> {
     let (val, new_env) = eval_core(ast, env.clone())?;
     *env = new_env;
     match val {
@@ -178,7 +215,7 @@ pub fn eval<'a>(ast: &Ast<'a>, env: &mut Rc<Env<'a>>) -> Result<Rc<Val<'a>>, Eva
 }
 
 fn value(val: Val) -> ControlFlow {
-    ControlFlow::Value(Rc::new(val))
+    ControlFlow::Value(Value::new(val))
 }
 
 fn nil<'a>() -> ControlFlow<'a> {
@@ -220,7 +257,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
         }
         Ast::Var(ref name, ..) => {
             env.lookup(name.borrow())
-                .map(|x| (ControlFlow::Value(x.0.clone()), env.clone()))
+                .map(|x| (ControlFlow::Value(x.clone()), env.clone()))
                 .ok_or_else(|| EvalError::NameLookup(name.clone().into_owned()))
         }
         Ast::Struct(ref name, ref members, span) => {
@@ -228,25 +265,26 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                                         members.iter().map(|member| {
                 Ast::Var(member.clone(), (0, 0))
             }).collect(), span);
-            let constructor = Rc::new(Val::Fn(members.clone(), constructor));
+            let constructor = Value::new(Val::Fn(members.clone(), constructor));
             let accessors = members.iter().enumerate().map(|(i, member)| {
-                Rc::new(Val::Fn(vec![member.clone()],
-                                Ast::Call(Box::new(Ast::Var("tuple/nth".into(), (0, 0))), vec![
-                                    Ast::Int(i as i64),
-                                    Ast::Var(member.clone(), (0, 0)),
+                Value::new(Val::Fn(vec![member.clone()],
+                                   Ast::Call(Box::new(Ast::Var("tuple/nth".into(), (0, 0))), vec![
+                                       Ast::Int(i as i64),
+                                       Ast::Var(member.clone(), (0, 0)),
                                 ], (0, 0))))
             });
             let mut env = (*env).clone();
-            env.insert(format!("{}", name).into(), Var(constructor.clone()));
+            env.insert(format!("{}", name).into(), constructor.clone());
             for (member, accessor) in members.iter().zip(accessors) {
-                env.insert(format!("{}/{}", name, member).into(), Var(accessor));
+                env.insert(format!("{}/{}", name, member).into(), accessor);
             }
             Ok((ControlFlow::Value(constructor), Rc::new(env)))
         }
         Ast::Defn(ref name, ref args, ref code, span) => {
-            let func = Rc::new(Val::Fn(args.clone(), Ast::Begin(code.clone(), span)));
+            let func = Value::new(Val::Fn(args.clone(),
+                                          Ast::Begin(code.clone(), span)));
             let mut env = (*env).clone();
-            env.insert(name.clone().into_owned(), Var(func.clone()));
+            env.insert(name.clone().into_owned(), func.clone());
             Ok((ControlFlow::Value(func), Rc::new(env)))
         }
         Ast::Call(ref func, ref args, span) => {
@@ -255,7 +293,8 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 EvalError::Call,
                 span);
             let func = try_get_value!(func, env);
-            match *func {
+            let ref pat = *func.val();
+            match *pat {
                 Val::Fn(ref names, ref body) => {
                     if args.len() != names.len() {
                         return Err(EvalError::BadArity {
@@ -269,7 +308,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                         let (arg_val, _) = chain_error!(
                             eval_core(arg, env.clone()), EvalError::Call, span);
                         let arg_val = try_get_value!(arg_val, env);
-                        call_env.insert(name.clone().into_owned(), Var(arg_val));
+                        call_env.insert(name.clone().into_owned(), arg_val);
                     }
                     Ok((ControlFlow::Value(eval(body, &mut Rc::new(call_env))?), env))
                 }
@@ -301,20 +340,21 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                 eval_core(val, env.clone()), EvalError::Let, span);
             let val = try_get_value!(val, env);
             let mut env = (*env).clone();
-            env.insert(name, Var(val));
+            env.insert(name, val);
             Ok((nil(), Rc::new(env)))
         }
         Ast::If(ref cond, ref if_true, ref if_false, span) => {
             let (cond, _) = chain_error!(
                 eval_core(cond, env.clone()), EvalError::If, span);
             let cond = try_get_value!(cond, env);
-            match *cond {
-                Val::Nil => Ok((eval_core(if_false, env.clone())?.0, env)),
-                _ => Ok((eval_core(if_true, env.clone())?.0, env)),
+            if *cond.val() == Val::Nil {
+                Ok((eval_core(if_false, env.clone())?.0, env))
+            } else {
+                Ok((eval_core(if_true, env.clone())?.0, env))
             }
         }
         Ast::Break(None, ..) => {
-            Ok((ControlFlow::Break(Rc::new(Val::Nil)), env))
+            Ok((ControlFlow::Break(Value::new(Val::Nil)), env))
         }
         Ast::Break(Some(ref val), span) => {
             let (val, _) = chain_error!(
@@ -333,7 +373,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
             Ok((ControlFlow::Continue(arg_values), env))
         }
         Ast::Return(None, ..) => {
-            Ok((ControlFlow::Return(Rc::new(Val::Nil)), env))
+            Ok((ControlFlow::Return(Value::new(Val::Nil)), env))
         }
         Ast::Return(Some(ref val), span) => {
             let (val, _) = chain_error!(
@@ -350,7 +390,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                     ControlFlow::Value(val) => val,
                     other => return Ok((other, env)),
                 };
-                loop_default_env.insert(var.clone().into_owned(), Var(val));
+                loop_default_env.insert(var.clone().into_owned(), val);
             }
             let mut loop_env = Rc::new(loop_default_env.clone());
             'outer: loop {
@@ -365,7 +405,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
                         }
                         ControlFlow::Continue(ref new_val) => {
                             for (&(ref var, _), val) in bindings.iter().zip(new_val) {
-                                loop_default_env.insert(var.clone().into_owned(), Var(val.clone()));
+                                loop_default_env.insert(var.clone().into_owned(), val.clone());
                             }
                             loop_env = Rc::new(loop_default_env.clone());
                             continue 'outer;
@@ -380,7 +420,7 @@ pub fn eval_core<'a>(ast: &Ast<'a>, env: Rc<Env<'a>>) -> Result<(ControlFlow<'a>
             }
         }
         Ast::Begin(ref body, span) => {
-            let mut last_val = Rc::new(Val::Nil);
+            let mut last_val = Value::new(Val::Nil);
             let mut block_env = env.clone();
             for expr in body {
                 let (new_val, new_env) = chain_error!(
