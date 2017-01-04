@@ -140,6 +140,28 @@ impl<'a> Display for Value<'a> {
             Val::Str(ref s) => write!(fmt, "{:?}", s),
             Val::Sym(ref s) => write!(fmt, "{}", s),
             Val::Tuple(ref t, ref tag) => {
+                if *tag == Some("cons".into()) {
+                    write!(fmt, "({}", t[0])?;
+                    let mut cdr = t[1].clone();
+                    loop {
+                        let cons = if let Val::Tuple(ref cons, ref tag) = *cdr.val() {
+                            if *tag != Some("cons".into()) {
+                                break;
+                            }
+                            cons.clone()
+                        } else {
+                            break;
+                        };
+                        write!(fmt, " {}", cons[0])?;
+                        cdr = cons[1].clone();
+                    }
+
+                    return if *cdr.val() == Val::Nil {
+                        write!(fmt, ")")
+                    } else {
+                        write!(fmt, " . {})", cdr)
+                    };
+                }
                 match *tag {
                     Some(ref tag) => write!(fmt, "(#tuple<{}>", tag)?,
                     None => write!(fmt, "(#tuple")?,

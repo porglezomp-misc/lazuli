@@ -24,6 +24,7 @@ pub enum Prim {
     FillHole,
 }
 
+
 impl Prim {
     pub fn call<'a>(&self, args: &Vec<Value<'a>>) -> Result<Value<'a>, EvalError> {
         use self::Prim::*;
