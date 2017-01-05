@@ -1,2 +1,4 @@
 target
 *.bk
+*.trace
+.DS_Store
