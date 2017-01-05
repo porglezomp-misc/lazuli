@@ -133,15 +133,31 @@ pub enum ControlFlow<'a> {
 impl<'a> Display for Value<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self.val() {
-            Val::Nil => write!(fmt, "()"),
+            Val::Nil => {
+                if fmt.alternate() {
+                    write!(fmt, "'()")
+                } else {
+                    write!(fmt, "()")
+                }
+            }
             Val::Int(i) => write!(fmt, "{}", i),
             Val::Float(f) => write!(fmt, "{}", f),
             Val::Char(c) => write!(fmt, "#\\{}", c),
             Val::Str(ref s) => write!(fmt, "{:?}", s),
-            Val::Sym(ref s) => write!(fmt, "{}", s),
+            Val::Sym(ref s) => {
+                if fmt.alternate() {
+                    write!(fmt, "'{}", s)
+                } else {
+                    write!(fmt, "{}", s)
+                }
+            }
             Val::Tuple(ref t, ref tag) => {
                 if *tag == Some("cons".into()) {
-                    write!(fmt, "({}", t[0])?;
+                    if fmt.alternate() {
+                        write!(fmt, "'({}", t[0])?;
+                    } else {
+                        write!(fmt, "({}", t[0])?;
+                    }
                     let mut cdr = t[1].clone();
                     loop {
                         let cons = if let Val::Tuple(ref cons, ref tag) = *cdr.val() {

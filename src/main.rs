@@ -80,7 +80,7 @@ fn repl() -> Result<(), Error> {
                     break;
                 }
             };
-            println!("{}", val);
+            println!("{:#}", val);
         }
     }
 }

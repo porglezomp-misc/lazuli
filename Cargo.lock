@@ -2,13 +2,13 @@
 name = "lazuli"
 version = "0.1.0"
 dependencies = [
- "ess 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ess 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "ess"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -17,5 +17,5 @@ version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
-"checksum ess 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "48f4e6a0b178821e1592888fdc9628585008940512fc0d2d0101b2a90d0f9e9d"
+"checksum ess 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8a9ea66f13b27f66cb1e8f064f938a9ceb5d6e290d85d7901f9ed4e7723a31f2"
 "checksum fnv 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "6cc484842f1e2884faf56f529f960cc12ad8c71ce96cc7abba0a067c98fee344"
